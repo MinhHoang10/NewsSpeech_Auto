@@ -6,6 +6,9 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import com.newsspeech.auto.domain.model.News
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 object NewsPlayer : TextToSpeech.OnInitListener {
@@ -23,7 +26,10 @@ object NewsPlayer : TextToSpeech.OnInitListener {
             return
         }
         initCallback = callback
-        tts = TextToSpeech(context.applicationContext, this)
+        // Wrap init trong coroutine để tránh chặn main nếu load chậm
+        CoroutineScope(Dispatchers.Default).launch {
+            tts = TextToSpeech(context.applicationContext, this@NewsPlayer)
+        }
     }
 
     override fun onInit(status: Int) {
@@ -64,6 +70,9 @@ object NewsPlayer : TextToSpeech.OnInitListener {
                 speakNext()
             }
         })
+
+        initCallback?.invoke(true)
+        initCallback = null
 
         // chạy queue nếu có
         speakNext()
@@ -116,7 +125,12 @@ object NewsPlayer : TextToSpeech.OnInitListener {
         val params = Bundle()
         params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "UTT_${System.currentTimeMillis()}")
 
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "NEWS_${System.currentTimeMillis()}")
+        val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "NEWS_${System.currentTimeMillis()}")
+        if (result == TextToSpeech.ERROR) {
+            Log.e("NewsPlayer", "Speak failed")
+            isSpeaking = false
+            speakNext()  // Thử next
+        }
     }
 
     // ---------------------------

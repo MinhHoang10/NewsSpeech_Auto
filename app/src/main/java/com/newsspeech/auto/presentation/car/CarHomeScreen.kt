@@ -27,7 +27,7 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
 
     private suspend fun loadNewsAsync(): List<News> {
         return try {
-            withContext(Dispatchers.IO) { newsRepo.loadNewsFromAssets() }
+            newsRepo.loadNewsFromAssets()  // Bây giờ là suspend, gọi trực tiếp (vì đã withContext IO bên trong repo)
         } catch (e: Exception) {
             Log.e("CarHomeScreen", "Load news error: ${e.message}")
             emptyList()
@@ -45,8 +45,6 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
             buildTemplate(newsList)
         }
     }
-
-    
 
     private fun buildTemplate(newsList: List<com.newsspeech.auto.domain.model.News>): Template {
         return ListTemplate.Builder().apply {
