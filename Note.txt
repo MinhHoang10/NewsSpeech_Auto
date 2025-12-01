@@ -1,0 +1,18 @@
+C:\Users\user\AppData\Local\Android\Sdk\extras\google\auto
+C:\Users\user\AppData\Local\Android\Sdk\platform-tools    >   adb forward tcp:5277 tcp:5277
+C:\Users\user\AppData\Local\Android\Sdk\extras\google\auto     >     desktop-head-unit.exe
+
+- Khi crawl VnExpress, nếu request với agent đơn giản, site phát hiện bot và từ chối kết nối 
+- Anti-bot + JS dependency: Site detect bot và chỉ load minimal HTML ban đầu. 
+Nội dung bài (paragraphs) chỉ xuất hiện sau khi JS chạy (e.g., via React/Vue components).
+-> Sử dụng WebDriverWait để đợi elements load (e.g., chờ h3.title-news xuất hiện). Thêm scroll để trigger lazy-load.
+-Regex cũ chưa cover cụm "tài khoản để gửi" đầy đủ. Fallback requests vẫn bị block 100% (Connection refused), nên RSS là chính
+->Code cập nhật với regex mạnh hơn + fallback an toàn
+
+- Xung đột ui do 2 màn car và mobile giành focus -> tắt màn mobile khi khởi chạy carscreen
+- Load dữ liệu nặng trong ui thread do đọc file json và chuyển to speech -> chuyển sang Dispatchers.IO hoặc Dispatchers.Default
+
+27/11 :
+Skipped 107 frames!: Gây lag/đơ UI.
+
+onMeasure time too long: Gây lag và có nguy cơ ANR.

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "401790014195",
+    "project_id": "newsspeechauto",
+    "storage_bucket": "newsspeechauto.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:401790014195:android:d903ae191f00e49eb4dd86",
+        "android_client_info": {
+          "package_name": "com.newsspeech.auto"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCIpL9JBH7HFgLqUpFKQ1Xxycg0ZkJ83zA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
