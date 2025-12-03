@@ -1,5 +1,6 @@
 package com.newsspeech.auto.presentation.car
 
+import android.util.Log
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.car.app.model.*
@@ -24,6 +25,15 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
         }
     }
 
+    private suspend fun loadNewsAsync(): List<News> {
+        return try {
+            withContext(Dispatchers.IO) { newsRepo.loadNewsFromAssets() }
+        } catch (e: Exception) {
+            Log.e("CarHomeScreen", "Load news error: ${e.message}")
+            emptyList()
+        }
+    }
+
     override fun onGetTemplate(): Template {
         return if (newsList.isEmpty()) {
             // Show loading hoặc empty/error
@@ -36,11 +46,7 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
         }
     }
 
-    private suspend fun loadNewsAsync(): List<News> {
-        return withContext(Dispatchers.IO) {  // I/O cho đọc file
-            newsRepo.loadNewsFromAssets()
-        }
-    }
+    
 
     private fun buildTemplate(newsList: List<com.newsspeech.auto.domain.model.News>): Template {
         return ListTemplate.Builder().apply {

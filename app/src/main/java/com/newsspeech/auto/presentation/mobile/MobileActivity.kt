@@ -2,6 +2,7 @@ package com.newsspeech.auto.presentation.mobile
 
 import android.content.res.Configuration
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -29,6 +30,14 @@ class MobileActivity : ComponentActivity() {
 
         setContent {
             MobileAppScreen()
+        }
+
+        // Init async
+        NewsPlayer.init(applicationContext) { success ->
+            if (!success) {
+                // Toast hoặc update state: e.g., ttsStatus = "Lỗi init TTS"
+                Log.e("MobileActivity", "TTS init failed")
+            }
         }
     }
 
@@ -58,6 +67,7 @@ class MobileActivity : ComponentActivity() {
 fun MobileAppScreen() {
     val context = LocalContext.current
     var ttsStatus by remember { mutableStateOf("Sẵn sàng") }
+    var isInitializing by remember { mutableStateOf(false) }
 
     MaterialTheme {
         Scaffold(
@@ -128,11 +138,14 @@ fun MobileAppScreen() {
                     Button(
                         onClick = {
                             if (NewsPlayer.isReady()) {
-                                NewsPlayer.addToQueue("Xin chào! Đây là bản thử nghiệm tính năng đọc tin tức bằng giọng nói trên điện thoại.")
+                                NewsPlayer.addToQueue("Xin chào! ...")
                                 ttsStatus = "Đang phát..."
-                            } else {
-                                ttsStatus = "Lỗi: TTS chưa sẵn sàng"
-                                NewsPlayer.init(context)
+                            } else if (!isInitializing) {
+                                isInitializing = true
+                                NewsPlayer.init(context) { success ->
+                                    isInitializing = false
+                                    ttsStatus = if (success) "Đã sẵn sàng, thử lại" else "Lỗi: TTS chưa sẵn sàng"
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxWidth(0.8f)

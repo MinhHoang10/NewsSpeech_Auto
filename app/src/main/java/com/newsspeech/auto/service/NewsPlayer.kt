@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.util.Log
 import com.newsspeech.auto.domain.model.News
 import java.util.Locale
 
@@ -14,9 +15,14 @@ object NewsPlayer : TextToSpeech.OnInitListener {
     private var isSpeaking = false
     private var isInitialized = false
     private var lastText: String? = null  // để resume
+    private var initCallback: ((Boolean) -> Unit)? = null
 
-    fun init(context: Context) {
-        if (tts != null) return
+    fun init(context: Context, callback: ((Boolean) -> Unit)? = null) {
+        if (tts != null) {
+            callback?.invoke(isInitialized)
+            return
+        }
+        initCallback = callback
         tts = TextToSpeech(context.applicationContext, this)
     }
 
@@ -24,15 +30,18 @@ object NewsPlayer : TextToSpeech.OnInitListener {
         isInitialized = (status == TextToSpeech.SUCCESS)
 
         if (!isInitialized) {
-            println("TTS failed to initialize with status: $status")
+            Log.e("NewsPlayer", "TTS failed to initialize with status: $status")
+            initCallback?.invoke(false)
+            initCallback = null
             return
         }
 
-        val result = tts?.setLanguage(Locale("vi", "VN"))  // Hoặc Locale.VIETNAM
+        val result = tts?.setLanguage(Locale("vi", "VN"))
         if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-            // Handle error: Log hoặc notify user install TTS data từ Settings
-            println("TTS language VN not supported")
+            Log.e("NewsPlayer", "TTS language VN not supported")
             isInitialized = false
+            initCallback?.invoke(false)
+            initCallback = null
             return
         }
 
@@ -64,6 +73,7 @@ object NewsPlayer : TextToSpeech.OnInitListener {
 
     fun shutdown() {
         stop()
+        tts?.setOnUtteranceProgressListener(null)  // Unregister để tránh leak
         tts?.shutdown()
         tts = null
         isInitialized = false

@@ -1,6 +1,7 @@
 package com.newsspeech.auto.service
 
 import android.content.Intent
+import android.util.Log
 import androidx.car.app.CarAppService
 import androidx.car.app.Screen
 import androidx.car.app.Session
@@ -13,7 +14,9 @@ class AutoSpeechService : CarAppService() {
         return object : Session() {
             override fun onCreateScreen(intent: Intent): Screen {
                 // Khởi tạo NewsPlayer ở đây để đảm bảo context sẵn sàng
-                NewsPlayer.init(carContext)
+                NewsPlayer.init(carContext) { success ->
+                if (!success) Log.e("AutoSpeechService", "TTS init failed")
+                }
                 return CarHomeScreen(carContext)
             }
         }

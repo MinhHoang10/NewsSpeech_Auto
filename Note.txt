@@ -16,3 +16,8 @@ Nội dung bài (paragraphs) chỉ xuất hiện sau khi JS chạy (e.g., via Re
 Skipped 107 frames!: Gây lag/đơ UI.
 
 onMeasure time too long: Gây lag và có nguy cơ ANR.
+
+1/12 : 
+- Bỏ indent=2 khi export: Việc sử dụng indent=2 khi json.dump làm tệp JSON dễ đọc (pretty-print) 
+nhưng lại tăng kích thước file. Để giảm tối đa kích thước, bạn nên loại bỏ tham số này (để json.dump(..., indent=None)).
+- Giải pháp Cập nhật Tự động mỗi 60 phút : Task Scheduler hoặc APScheduler
