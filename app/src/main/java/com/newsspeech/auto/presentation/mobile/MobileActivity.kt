@@ -26,7 +26,7 @@ class MobileActivity : ComponentActivity() {
         }
 
         // Khởi tạo NewsPlayer với application context để tránh memory leak
-        NewsPlayer.init(applicationContext)
+        // NewsPlayer.init(applicationContext)
 
         setContent {
             MobileAppScreen()
@@ -47,12 +47,6 @@ class MobileActivity : ComponentActivity() {
         if (!NewsPlayer.isReady()) {
             NewsPlayer.init(applicationContext)
         }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        // Dừng phát khi app bị ẩn (tuỳ chọn)
-        // NewsPlayer.pause()
     }
 
     override fun onDestroy() {

@@ -55,21 +55,22 @@ object NewsPlayer : TextToSpeech.OnInitListener {
         tts?.setSpeechRate(1.0f)
         // tts?.language = Locale("vi", "VN") // optional
 
-        tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) {
-                isSpeaking = true
-            }
+        val onUtteranceProgressListener: Int? =
+            tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {
+                    isSpeaking = true
+                }
 
-            override fun onDone(utteranceId: String?) {
-                isSpeaking = false
-                speakNext()
-            }
+                override fun onDone(utteranceId: String?) {
+                    isSpeaking = false
+                    speakNext()
+                }
 
-            override fun onError(utteranceId: String?) {
-                isSpeaking = false
-                speakNext()
-            }
-        })
+                override fun onError(utteranceId: String?) {
+                    isSpeaking = false
+                    speakNext()
+                }
+            })
 
         initCallback?.invoke(true)
         initCallback = null

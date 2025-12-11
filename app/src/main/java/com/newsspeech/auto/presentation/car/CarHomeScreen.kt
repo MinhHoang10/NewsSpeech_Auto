@@ -3,14 +3,16 @@ package com.newsspeech.auto.presentation.car
 import android.util.Log
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
-import androidx.car.app.model.*
+import androidx.car.app.model.Action
+import androidx.car.app.model.ItemList
+import androidx.car.app.model.ListTemplate
+import androidx.car.app.model.Row
+import androidx.car.app.model.Template
 import androidx.lifecycle.lifecycleScope
 import com.newsspeech.auto.data.repository.NewsRepository
 import com.newsspeech.auto.domain.model.News
 import com.newsspeech.auto.service.NewsPlayer
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
 
@@ -46,7 +48,7 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
         }
     }
 
-    private fun buildTemplate(newsList: List<com.newsspeech.auto.domain.model.News>): Template {
+    private fun buildTemplate(newsList: List<News>): Template {
         return ListTemplate.Builder().apply {
             setTitle("Tin tức hôm nay")
             setHeaderAction(Action.APP_ICON)
@@ -63,7 +65,7 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
     private fun buildEmptyList(): ItemList {
         return ItemList.Builder()
             .addItem(
-                Row.Builder()
+                /* item = */ Row.Builder()
                     .setTitle("Không có tin tức")
                     .addText("Vui lòng kiểm tra dữ liệu")
                     .setBrowsable(false)
@@ -72,7 +74,7 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
             .build()
     }
 
-    private fun buildNewsList(newsList: List<com.newsspeech.auto.domain.model.News>): ItemList {
+    private fun buildNewsList(newsList: List<News>): ItemList {
         return ItemList.Builder().apply {
             newsList.forEach { news ->
                 addItem(
@@ -81,7 +83,7 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
                         .addText("Nguồn: ${news.source}")
                         .setOnClickListener {
                             // Đảm bảo chạy trên main thread
-                            screenManager?.let { manager ->
+                            screenManager.let {
                                 val fullText = "Tin ${news.title}. ${news.content}"
                                 NewsPlayer.addToQueue(fullText)
                             }
@@ -92,18 +94,4 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
         }.build()
     }
 
-    private fun buildErrorTemplate(errorMessage: String): Template {
-        return ListTemplate.Builder()
-            .setSingleList(
-                ItemList.Builder()
-                    .addItem(
-                        Row.Builder()
-                            .setTitle("Lỗi tải tin tức")
-                            .addText(errorMessage)
-                            .build()
-                    )
-                    .build()
-            )
-            .build()
-    }
 }
