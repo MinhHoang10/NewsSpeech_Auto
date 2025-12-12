@@ -27,9 +27,7 @@ object NewsPlayer : TextToSpeech.OnInitListener {
         }
         initCallback = callback
         // Wrap init trong coroutine để tránh chặn main nếu load chậm
-        CoroutineScope(Dispatchers.Default).launch {
-            tts = TextToSpeech(context.applicationContext, this@NewsPlayer)
-        }
+        tts = TextToSpeech(context.applicationContext, this@NewsPlayer)
     }
 
     override fun onInit(status: Int) {
