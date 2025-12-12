@@ -28,7 +28,7 @@
             android:value="8" />
 
         <meta-data
-            android:name="androidx.car.app.application"
+            android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
 
         <!-- Thêm attribution icon (tùy chọn nhưng khuyến nghị) -->
