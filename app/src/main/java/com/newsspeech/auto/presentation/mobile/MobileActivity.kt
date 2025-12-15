@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.car.app.connection.CarConnection
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -12,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.LiveData
 import com.newsspeech.auto.service.NewsPlayer
 
 class MobileActivity : ComponentActivity() {
@@ -19,23 +21,23 @@ class MobileActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        if (resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_CAR) {
-            // Ẩn mobile UI để nhường focus cho car screen
-            finish()  // Hoặc moveTaskToBack(true) để minimize
-            return
+        // 1. Kiểm tra kết nối Android Auto thực tế (Thay cho UI_MODE_TYPE_CAR)
+        val connectionLiveData: LiveData<Int> = CarConnection(this).type
+        connectionLiveData.observe(this) { connectionType ->
+            if (connectionType == CarConnection.CONNECTION_TYPE_PROJECTION) {
+                Log.d("MobileActivity", "Đang kết nối Android Auto -> Ẩn UI điện thoại")
+                // Ẩn app xuống background ngay lập tức
+                moveTaskToBack(true)
+            }
         }
-
-        // Khởi tạo NewsPlayer với application context để tránh memory leak
-        // NewsPlayer.init(applicationContext)
 
         setContent {
             MobileAppScreen()
         }
 
-        // Init async
+        // Khởi tạo NewsPlayer async
         NewsPlayer.init(applicationContext) { success ->
             if (!success) {
-                // Toast hoặc update state: e.g., ttsStatus = "Lỗi init TTS"
                 Log.e("MobileActivity", "TTS init failed")
             }
         }
@@ -45,7 +47,12 @@ class MobileActivity : ComponentActivity() {
         super.onResume()
         // Đảm bảo TTS sẵn sàng khi quay lại app
         if (!NewsPlayer.isReady()) {
-            NewsPlayer.init(applicationContext)
+            // Sử dụng callback để biết kết quả khởi tạo
+            NewsPlayer.init(applicationContext) { success ->
+                if (!success) {
+                    Log.w("MobileActivity", "TTS init on resume failed")
+                }
+            }
         }
     }
 
@@ -62,6 +69,13 @@ fun MobileAppScreen() {
     val context = LocalContext.current
     var ttsStatus by remember { mutableStateOf("Sẵn sàng") }
     var isInitializing by remember { mutableStateOf(false) }
+    var isTtsReady by remember { mutableStateOf(NewsPlayer.isReady()) }
+
+    // Cập nhật trạng thái khi có thay đổi
+    LaunchedEffect(Unit) {
+        // Có thể thêm observer pattern nếu NewsPlayer hỗ trợ
+        // Hoặc dùng cách poll đơn giản nếu cần
+    }
 
     MaterialTheme {
         Scaffold(
@@ -83,7 +97,7 @@ fun MobileAppScreen() {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (NewsPlayer.isReady()) {
+                        containerColor = if (isTtsReady) {
                             MaterialTheme.colorScheme.primaryContainer
                         } else {
                             MaterialTheme.colorScheme.errorContainer
@@ -99,7 +113,7 @@ fun MobileAppScreen() {
                             style = MaterialTheme.typography.labelMedium
                         )
                         Text(
-                            if (NewsPlayer.isReady()) "✅ Đã sẵn sàng" else "❌ Chưa khởi tạo",
+                            if (isTtsReady) "✅ Đã sẵn sàng" else "❌ Chưa khởi tạo",
                             style = MaterialTheme.typography.titleMedium
                         )
                     }
@@ -131,20 +145,22 @@ fun MobileAppScreen() {
                 ) {
                     Button(
                         onClick = {
-                            if (NewsPlayer.isReady()) {
+                            if (isTtsReady) {
                                 NewsPlayer.addToQueue("Xin chào! ...")
                                 ttsStatus = "Đang phát..."
                             } else if (!isInitializing) {
                                 isInitializing = true
                                 NewsPlayer.init(context) { success ->
                                     isInitializing = false
+                                    isTtsReady = success
                                     ttsStatus = if (success) "Đã sẵn sàng, thử lại" else "Lỗi: TTS chưa sẵn sàng"
                                 }
                             }
                         },
-                        modifier = Modifier.fillMaxWidth(0.8f)
+                        modifier = Modifier.fillMaxWidth(0.8f),
+                        enabled = !isInitializing
                     ) {
-                        Text("Phát thử TTS")
+                        Text(if (isInitializing) "Đang khởi tạo..." else "Phát thử TTS")
                     }
 
                     Button(
@@ -156,19 +172,25 @@ fun MobileAppScreen() {
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.secondaryContainer,
                             contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
+                        ),
+                        enabled = isTtsReady
                     ) {
                         Text("Dừng phát")
                     }
 
                     OutlinedButton(
                         onClick = {
-                            NewsPlayer.init(context)
-                            ttsStatus = if (NewsPlayer.isReady()) "Đã khởi tạo lại" else "Lỗi khởi tạo"
+                            isInitializing = true
+                            NewsPlayer.init(context) { success ->
+                                isInitializing = false
+                                isTtsReady = success
+                                ttsStatus = if (success) "Đã khởi tạo lại" else "Lỗi khởi tạo"
+                            }
                         },
-                        modifier = Modifier.fillMaxWidth(0.8f)
+                        modifier = Modifier.fillMaxWidth(0.8f),
+                        enabled = !isInitializing
                     ) {
-                        Text("Khởi tạo lại TTS")
+                        Text(if (isInitializing) "Đang khởi tạo..." else "Khởi tạo lại TTS")
                     }
                 }
 
