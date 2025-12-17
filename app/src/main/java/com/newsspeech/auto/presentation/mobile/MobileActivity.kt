@@ -14,6 +14,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.LiveData
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import com.newsspeech.auto.service.NewsPlayer
 
 class MobileActivity : ComponentActivity() {
@@ -41,9 +44,11 @@ class MobileActivity : ComponentActivity() {
         }
 
         // Khởi tạo NewsPlayer async
-        NewsPlayer.init(applicationContext) { success ->
-            if (!success) {
-                Log.e("MobileActivity", "TTS init failed")
+        lifecycleScope.launch(Dispatchers.IO) {
+            NewsPlayer.init(applicationContext) { success ->
+                if (!success) {
+                    Log.e("MobileActivity", "TTS init failed")
+                }
             }
         }
     }
