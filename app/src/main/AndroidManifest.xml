@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- THÊM PERMISSION BẮT BUỘC -->
     <uses-permission android:name="androidx.car.app.permission.TEMPLATE_RENDERER" />
     <uses-permission android:name="androidx.car.app.MEDIA_TEMPLATES" />
 
@@ -9,35 +8,26 @@
         android:allowBackup="true"
         android:label="NewsSpeech Auto"
         android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/Theme.NewsSpeechAuto">
-
-        <!-- DỊCH VỤ CHÍNH - ĐÃ SỬA ĐẦY ĐỦ -->
-        <service
-        android:name=".service.AutoSpeechService"
-        android:exported="true"
-        android:permission="androidx.car.app.permission.TEMPLATE_RENDERER">
-
-        <intent-filter>
-            <action android:name="androidx.car.app.CarAppService" />
-            <category android:name="androidx.car.app.category.MEDIA" />
-        </intent-filter>
-
-        <meta-data
-            android:name="androidx.car.app.minCarApiLevel"
-            android:value="8" />
 
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
 
-        <!-- Thêm attribution icon (tùy chọn nhưng khuyến nghị) -->
-        <meta-data
-            android:name="androidx.car.app.attributionIcon"
-            android:resource="@mipmap/ic_launcher" />
+        <service
+            android:name=".service.AutoSpeechService"
+            android:exported="true"
+            android:permission="androidx.car.app.permission.TEMPLATE_RENDERER">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.MEDIA" />
+            </intent-filter>
+
+            <meta-data
+                android:name="androidx.car.app.minCarApiLevel"
+                android:value="1" />
         </service>
 
-        <!-- MÀN HÌNH ĐIỆN THOẠI -->
         <activity android:name=".presentation.mobile.MobileActivity"
             android:exported="true">
             <intent-filter>
@@ -45,7 +35,5 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
     </application>
 </manifest>
-

@@ -21,13 +21,18 @@ class MobileActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 1. Kiểm tra kết nối Android Auto thực tế (Thay cho UI_MODE_TYPE_CAR)
+        // 1. Quan sát trạng thái kết nối
         val connectionLiveData: LiveData<Int> = CarConnection(this).type
         connectionLiveData.observe(this) { connectionType ->
             if (connectionType == CarConnection.CONNECTION_TYPE_PROJECTION) {
-                Log.d("MobileActivity", "Đang kết nối Android Auto -> Ẩn UI điện thoại")
-                // Ẩn app xuống background ngay lập tức
+                Log.d("MobileActivity", "Đang kết nối Android Auto -> Đóng UI điện thoại để nhường Focus")
+
+                // Đưa về background (đề phòng)
                 moveTaskToBack(true)
+
+                // QUAN TRỌNG: Gọi finish() để đóng hẳn Activity,
+                // giúp InputDispatcher không bị kẹt focus vào điện thoại
+                finish()
             }
         }
 
@@ -47,7 +52,6 @@ class MobileActivity : ComponentActivity() {
         super.onResume()
         // Đảm bảo TTS sẵn sàng khi quay lại app
         if (!NewsPlayer.isReady()) {
-            // Sử dụng callback để biết kết quả khởi tạo
             NewsPlayer.init(applicationContext) { success ->
                 if (!success) {
                     Log.w("MobileActivity", "TTS init on resume failed")
@@ -57,8 +61,13 @@ class MobileActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        // Chỉ shutdown TTS khi app thực sự bị destroy
-        NewsPlayer.shutdown()
+        // LƯU Ý QUAN TRỌNG:
+        // Khi chạy Android Auto, Activity này sẽ bị finish() để ẩn đi.
+        // Nếu gọi shutdown() ở đây, TTS trên xe cũng sẽ bị tắt theo.
+        // Chỉ nên shutdown khi người dùng thực sự muốn thoát app hoàn toàn (hoặc xử lý trong Service).
+
+        // NewsPlayer.shutdown()  <-- Đã comment lại để không ngắt giọng đọc trên xe
+
         super.onDestroy()
     }
 }
@@ -70,12 +79,6 @@ fun MobileAppScreen() {
     var ttsStatus by remember { mutableStateOf("Sẵn sàng") }
     var isInitializing by remember { mutableStateOf(false) }
     var isTtsReady by remember { mutableStateOf(NewsPlayer.isReady()) }
-
-    // Cập nhật trạng thái khi có thay đổi
-    LaunchedEffect(Unit) {
-        // Có thể thêm observer pattern nếu NewsPlayer hỗ trợ
-        // Hoặc dùng cách poll đơn giản nếu cần
-    }
 
     MaterialTheme {
         Scaffold(
@@ -130,7 +133,7 @@ fun MobileAppScreen() {
                 Spacer(Modifier.height(16.dp))
 
                 Text(
-                    "Ứng dụng chính hoạt động trên Android Auto. Bạn có thể thử nghiệm tính năng Text-to-Speech tại đây.",
+                    "Đang chạy chế độ Mobile.\nKết nối vào xe để sử dụng Android Auto.",
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -146,7 +149,7 @@ fun MobileAppScreen() {
                     Button(
                         onClick = {
                             if (isTtsReady) {
-                                NewsPlayer.addToQueue("Xin chào! ...")
+                                NewsPlayer.addToQueue("Xin chào! Đây là thử nghiệm âm thanh.")
                                 ttsStatus = "Đang phát..."
                             } else if (!isInitializing) {
                                 isInitializing = true
@@ -196,7 +199,6 @@ fun MobileAppScreen() {
 
                 Spacer(Modifier.height(24.dp))
 
-                // Hiển thị thông báo trạng thái
                 Text(
                     ttsStatus,
                     style = MaterialTheme.typography.bodySmall,

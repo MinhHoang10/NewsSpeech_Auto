@@ -6,6 +6,8 @@ import androidx.car.app.Screen
 import androidx.car.app.model.Action
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
+import androidx.car.app.model.Pane
+import androidx.car.app.model.PaneTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.model.Template
 import androidx.lifecycle.lifecycleScope
@@ -19,13 +21,13 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
     private val newsRepo = NewsRepository(carContext)
     private var newsList: List<News> = emptyList()  // Cache
 
-    init {
-        // Load async ngay khi init
-        lifecycleScope.launch {
-            newsList = loadNewsAsync()
-            invalidate()  // Refresh template sau khi load done
-        }
-    }
+//    init {
+//        // Load async ngay khi init
+//        lifecycleScope.launch {
+//            newsList = loadNewsAsync()
+//            invalidate()  // Refresh template sau khi load done
+//        }
+//    }
 
     private suspend fun loadNewsAsync(): List<News> {
         return try {
@@ -36,16 +38,31 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
         }
     }
 
+//    override fun onGetTemplate(): Template {
+//        return if (newsList.isEmpty()) {
+//            // Show loading hoặc empty/error
+//            ListTemplate.Builder()
+//                .setTitle("Đang tải tin tức...")
+//                .setLoading(true)  // Hoặc buildEmptyList() như cũ
+//                .build()
+//        } else {
+//            buildTemplate(newsList)
+//        }
+//    }
+
     override fun onGetTemplate(): Template {
-        return if (newsList.isEmpty()) {
-            // Show loading hoặc empty/error
-            ListTemplate.Builder()
-                .setTitle("Đang tải tin tức...")
-                .setLoading(true)  // Hoặc buildEmptyList() như cũ
-                .build()
-        } else {
-            buildTemplate(newsList)
-        }
+        // Trả về template tĩnh, đảm bảo không có lỗi.
+        val helloRow = Row.Builder()
+            .setTitle("✅ App Đã Kết Nối!")
+            .addText("Sửa Manifest đã thành công. Logic này là tĩnh.")
+            .build()
+
+        val pane = Pane.Builder().addRow(helloRow).build()
+
+        return PaneTemplate.Builder(pane)
+            .setTitle("Kiểm Tra Kết Nối")
+            .setHeaderAction(Action.APP_ICON)
+            .build()
     }
 
     private fun buildTemplate(newsList: List<News>): Template {
