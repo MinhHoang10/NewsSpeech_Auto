@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.car.app.connection.CarConnection
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,6 +25,7 @@ class MobileActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val isCarConnected = mutableStateOf(false)
         // 1. Quan sát trạng thái kết nối
         val connectionLiveData: LiveData<Int> = CarConnection(this).type
         connectionLiveData.observe(this) { connectionType ->
@@ -31,16 +33,21 @@ class MobileActivity : ComponentActivity() {
                 Log.d("MobileActivity", "Đang kết nối Android Auto -> Đóng UI điện thoại để nhường Focus")
 
                 // Đưa về background (đề phòng)
-                moveTaskToBack(true)
+//                moveTaskToBack(true)
 
                 // QUAN TRỌNG: Gọi finish() để đóng hẳn Activity,
                 // giúp InputDispatcher không bị kẹt focus vào điện thoại
-                finish()
+                //finish()
             }
         }
 
         setContent {
-            MobileAppScreen()
+            // 3. Logic chuyển đổi giao diện
+            if (isCarConnected.value) {
+                CarConnectedScreen() // Giao diện siêu nhẹ
+            } else {
+                MobileAppScreen()    // Giao diện chính
+            }
         }
 
         // Khởi tạo NewsPlayer async
@@ -78,6 +85,22 @@ class MobileActivity : ComponentActivity() {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+
+@Composable
+fun CarConnectedScreen() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(androidx.compose.ui.graphics.Color.Black),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Đang chạy trên Android Auto...", color = androidx.compose.ui.graphics.Color.Gray)
+            Text("(Giữ màn hình này để app ổn định)", color = androidx.compose.ui.graphics.Color.DarkGray, style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
 @Composable
 fun MobileAppScreen() {
     val context = LocalContext.current
@@ -88,9 +111,9 @@ fun MobileAppScreen() {
     MaterialTheme {
         Scaffold(
             topBar = {
-                CenterAlignedTopAppBar(
-                    title = { Text("NewsSpeech Auto") }
-                )
+//                CenterAlignedTopAppBar(
+//                    title = { Text("NewsSpeech Auto") }
+//                )
             }
         ) { innerPadding ->
             Column(
