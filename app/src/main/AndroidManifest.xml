@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.newsspeech.auto"> <uses-permission android:name="android.permission.INTERNET" />
+    package="com.newsspeech.auto">
+
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:allowBackup="true"
@@ -10,17 +12,19 @@
 
         <service
             android:name=".service.AutoSpeechService"
-            android:exported="true"
-            android:permission="com.google.android.gms.permission.BIND_CAR_APP_SERVICE"> <intent-filter>
-            <action android:name="androidx.car.app.CarAppService" />
-        </intent-filter>
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.IOT"/>
+            </intent-filter>
 
             <meta-data
                 android:name="androidx.car.app.minCarApiLevel"
                 android:value="1" />
 
             <meta-data
-                android:name="androidx.car.app.application.description"
+                android:name="com.google.android.gms.car.application"
                 android:resource="@xml/automotive_app_desc" />
         </service>
 
