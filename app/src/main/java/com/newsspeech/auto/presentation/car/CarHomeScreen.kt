@@ -11,40 +11,61 @@ import com.newsspeech.auto.domain.model.News
 import com.newsspeech.auto.service.NewsPlayer
 import kotlinx.coroutines.launch
 
+/**
+ * Màn hình chính trên Android Auto
+ *
+ * ✅ Load dữ liệu bất đồng bộ không block UI
+ * ✅ Cache dữ liệu để không load lại khi invalidate()
+ */
 class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
 
-    // Repo đã được viết chuẩn với Dispatchers.IO, nên gọi ở đây an toàn
+    private val TAG = "CarHomeScreen"
+
+    // Repository đã dùng Dispatchers.IO
     private val newsRepo = NewsRepository(carContext)
 
-    // Cache danh sách tin để không phải load lại mỗi khi invalidate
+    // Cache danh sách tin
     private var newsList: List<News> = emptyList()
 
     // Trạng thái loading
     private var isLoading = true
 
     init {
+        Log.d(TAG, "🖥️ CarHomeScreen initialized")
         loadData()
     }
 
+    /**
+     * Load dữ liệu từ assets
+     * Chạy trong coroutine để không block UI
+     */
     private fun loadData() {
-        // Sử dụng lifecycleScope của Screen để tự động hủy nếu thoát màn hình
         lifecycleScope.launch {
             try {
-                // Gọi hàm suspend trong Repo (nó sẽ tự nhảy sang IO thread)
-                // Nên KHÔNG GÂY LAG UI
+                Log.d(TAG, "📥 Bắt đầu load tin tức...")
+
+                // Gọi suspend function (tự động chạy trên IO thread)
                 newsList = newsRepo.loadNewsFromAssets()
+
+                Log.i(TAG, "✅ Load thành công ${newsList.size} tin")
             } catch (e: Exception) {
-                Log.e("CarHomeScreen", "Lỗi load tin: ${e.message}")
+                Log.e(TAG, "❌ Lỗi khi load tin: ${e.message}", e)
+                newsList = emptyList()
             } finally {
-                // Tắt loading và yêu cầu vẽ lại giao diện
                 isLoading = false
-                invalidate()
+                invalidate() // Yêu cầu re-render
             }
         }
     }
 
+    /**
+     * Build template để hiển thị trên xe
+     * Được gọi mỗi khi invalidate()
+     */
     override fun onGetTemplate(): Template {
-        // 1. Trạng thái Đang tải
+        Log.d(TAG, "🎨 onGetTemplate() called - isLoading: $isLoading, newsCount: ${newsList.size}")
+
+        // Case 1: Đang loading
         if (isLoading) {
             return ListTemplate.Builder()
                 .setTitle("Đang tải tin tức...")
@@ -53,44 +74,77 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
                 .build()
         }
 
-        // 2. Trạng thái Danh sách trống (hoặc lỗi)
+        // Case 2: Danh sách rỗng (lỗi hoặc không có dữ liệu)
         if (newsList.isEmpty()) {
-            val emptyRow = Row.Builder()
-                .setTitle("Không có tin tức")
-                .addText("Không tìm thấy dữ liệu trong assets/all_news.json")
-                .build()
-
-            return ListTemplate.Builder()
-                .setTitle("Tin Tức")
-                .setHeaderAction(Action.APP_ICON)
-                .setSingleList(ItemList.Builder().addItem(emptyRow).build())
-                .build()
+            return buildEmptyTemplate()
         }
 
-        // 3. Trạng thái Có dữ liệu -> Hiển thị danh sách
+        // Case 3: Có dữ liệu → Hiển thị danh sách
         return buildNewsListTemplate(newsList)
     }
 
+    /**
+     * Template khi không có dữ liệu
+     */
+    private fun buildEmptyTemplate(): ListTemplate {
+        val emptyRow = Row.Builder()
+            .setTitle("⚠️ Không có tin tức")
+            .addText("Không tìm thấy dữ liệu trong assets/all_news.json")
+            .addText("Vui lòng kiểm tra file và khởi động lại app")
+            .build()
+
+        return ListTemplate.Builder()
+            .setTitle("Tin Tức")
+            .setHeaderAction(Action.APP_ICON)
+            .setSingleList(
+                ItemList.Builder()
+                    .addItem(emptyRow)
+                    .build()
+            )
+            .build()
+    }
+
+    /**
+     * Template hiển thị danh sách tin
+     */
     private fun buildNewsListTemplate(list: List<News>): ListTemplate {
         val itemListBuilder = ItemList.Builder()
 
-        list.forEach { news ->
-            // Tạo nội dung hàng
+        list.forEachIndexed { index, news ->
             val row = Row.Builder()
-                .setTitle(news.title) // Tiêu đề tin
+                .setTitle(news.title)
 
-            // Kiểm tra null safety cho các trường khác (nếu model có nullable)
-            val desc = if (!news.content.isNullOrEmpty()) news.content else "Chạm để nghe chi tiết"
-            row.addText(desc)
+            // Hiển thị description
+            val description = when {
+                news.content.isNotEmpty() -> {
+                    // Giới hạn độ dài để không quá dài trên xe
+                    if (news.content.length > 100) {
+                        news.content.take(100) + "..."
+                    } else {
+                        news.content
+                    }
+                }
+                else -> "Chạm để nghe chi tiết"
+            }
+            row.addText(description)
 
-            // Xử lý sự kiện click
+            // Hiển thị metadata (nguồn và thời gian)
+            if (news.source.isNotEmpty() || news.timestamp.isNotEmpty()) {
+                val metadata = buildString {
+                    if (news.source.isNotEmpty()) {
+                        append(news.source)
+                    }
+                    if (news.timestamp.isNotEmpty()) {
+                        if (isNotEmpty()) append(" • ")
+                        append(news.timestamp)
+                    }
+                }
+                row.addText(metadata)
+            }
+
+            // Xử lý click → Đọc tin
             row.setOnClickListener {
-                // Logic đọc tin
-                val contentToRead = "Tin: ${news.title}. ${news.content ?: ""}"
-                NewsPlayer.addToQueue(contentToRead)
-
-                // (Tùy chọn) Hiện thông báo nhỏ trên xe
-                CarToast.makeText(carContext, "Đang phát...", CarToast.LENGTH_SHORT).show()
+                handleNewsClick(news)
             }
 
             itemListBuilder.addItem(row.build())
@@ -101,5 +155,51 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
             .setHeaderAction(Action.APP_ICON)
             .setSingleList(itemListBuilder.build())
             .build()
+    }
+
+    /**
+     * Xử lý khi user click vào 1 tin
+     */
+    private fun handleNewsClick(news: News) {
+        Log.d(TAG, "👆 User clicked: ${news.title}")
+
+        // Kiểm tra TTS có sẵn sàng không
+        if (!NewsPlayer.isReady()) {
+            Log.w(TAG, "⚠️ TTS chưa sẵn sàng")
+            CarToast.makeText(
+                carContext,
+                "Đang khởi tạo TTS, vui lòng thử lại",
+                CarToast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        // Tạo nội dung đọc
+        val contentToRead = buildString {
+            append("Tin từ ")
+            if (news.source.isNotEmpty()) {
+                append(news.source)
+                append(". ")
+            }
+
+            append(news.title)
+            append(". ")
+
+            if (news.content.isNotEmpty()) {
+                append(news.content)
+            }
+        }
+
+        // Thêm vào hàng đợi
+        NewsPlayer.addToQueue(contentToRead)
+
+        // Hiển thị thông báo
+        CarToast.makeText(
+            carContext,
+            "🔊 Đang phát...",
+            CarToast.LENGTH_SHORT
+        ).show()
+
+        Log.i(TAG, "✅ Đã thêm tin vào queue")
     }
 }
