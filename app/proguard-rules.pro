@@ -1,199 +1,127 @@
 # ============================================
-# NewsSpeech Auto - ProGuard Rules
+# NewsSpeech Auto - ProGuard Rules (FIXED)
 # ============================================
 
-# Giữ lại số dòng (line numbers) để debug khi app bị crash
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
-
-# Giữ lại các annotation quan trọng
 -keepattributes *Annotation*,Signature,Exception
 
 # ============================================
-# COMPOSE RUNTIME - SỬA LỖI TREO APP (LOCK VERIFICATION)
+# COMPOSE - FIX LOCK VERIFICATION ⚠️ CRITICAL
 # ============================================
-# Đây là phần quan trọng nhất để fix lỗi lag 2.8s
--keep class androidx.compose.runtime.** { *; }
--keepclassmembers class androidx.compose.runtime.** { *; }
--dontwarn androidx.compose.runtime.**
 
--keep class androidx.compose.runtime.snapshots.** { *; }
--keepclassmembers class androidx.compose.runtime.snapshots.** { *; }
--dontwarn androidx.compose.runtime.snapshots.**
+# KHÔNG được optimize Compose runtime (gây lock verification failed)
+-keep,allowshrinking,allowobfuscation class androidx.compose.** { *; }
+#-keep class androidx.compose.runtime.** { *; }
+#-keep class androidx.compose.runtime.snapshots.** { *; }
 
+# Đặc biệt giữ nguyên SnapshotStateList
+-keepclassmembers class androidx.compose.runtime.snapshots.SnapshotStateList {
+    *;
+}
+
+# TẮT optimization cho Compose
 -keep class androidx.compose.ui.** { *; }
--dontwarn androidx.compose.ui.**
-
 -keep class androidx.compose.material3.** { *; }
--dontwarn androidx.compose.material3.**
+-keep class androidx.compose.foundation.** { *; }
+
+# Disable aggressive optimizations
+-optimizations !code/simplification/arithmetic,!code/simplification/cast,!field/*,!class/merging/*
 
 # ============================================
-# ANDROID AUTO
+# APP-SPECIFIC CLASSES
 # ============================================
--keep class androidx.car.app.** { *; }
--keepclassmembers class androidx.car.app.** { *; }
--dontwarn androidx.car.app.**
 
-# Giữ lại Service và Màn hình của xe
--keep class com.newsspeech.auto.presentation.car.** { *; }
+# Android Auto Service và Screen
 -keep class com.newsspeech.auto.service.AutoSpeechService { *; }
+-keep class com.newsspeech.auto.presentation.car.** { *; }
 
-# ============================================
-# TEXT-TO-SPEECH (TTS)
-# ============================================
--keep class android.speech.tts.** { *; }
--keepclassmembers class android.speech.tts.** { *; }
--dontwarn android.speech.tts.**
+# NewsPlayer singleton (TTS)
+-keep class com.newsspeech.auto.service.NewsPlayer {
+    public <methods>;
+    public <fields>;
+}
 
-# Giữ lại Singleton NewsPlayer
--keep class com.newsspeech.auto.service.NewsPlayer { *; }
--keepclassmembers class com.newsspeech.auto.service.NewsPlayer { *; }
-
-# ============================================
-# GSON (QUAN TRỌNG CHO CRAWL DATA)
-# ============================================
--keepattributes Signature
--keepattributes *Annotation*
--dontwarn sun.misc.**
-
--keep class com.google.gson.** { *; }
--keep class com.google.gson.stream.** { *; }
--keep class com.google.gson.reflect.TypeToken { *; }
--keep class * extends com.google.gson.reflect.TypeToken
-
-# Giữ lại các Model để Gson không bị lỗi parse JSON
+# Data models cho GSON
 -keep class com.newsspeech.auto.domain.model.** { *; }
 -keepclassmembers class com.newsspeech.auto.domain.model.** {
     <fields>;
     <init>(...);
 }
 
+# Application class
+-keep class com.newsspeech.auto.NewsApp { *; }
+
 # ============================================
-# KOTLIN & COROUTINES
+# GSON
 # ============================================
--keep class kotlin.** { *; }
--keep class kotlin.Metadata { *; }
--dontwarn kotlin.**
+
+-keepattributes Signature
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken
+
+-keepclassmembers,allowobfuscation class * {
+    @com.google.gson.annotations.SerializedName <fields>;
+}
+
+# ============================================
+# ANDROID AUTO
+# ============================================
+
+-keep class * extends androidx.car.app.Screen {
+    public <init>(...);
+}
+
+# ============================================
+# HILT DEPENDENCY INJECTION
+# ============================================
+
+-keep @dagger.hilt.android.HiltAndroidApp class * { *; }
+-keepclasseswithmembers class * {
+    @dagger.hilt.android.AndroidEntryPoint <methods>;
+}
+
+# ============================================
+# KOTLIN COROUTINES
+# ============================================
 
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
--keepclassmembers class kotlinx.** {
-    volatile <fields>;
-}
 
 # ============================================
-# ANDROIDX & LIFECYCLE
+# STANDARD ANDROID CLASSES
 # ============================================
--keep class androidx.lifecycle.** { *; }
--keep class androidx.activity.** { *; }
--dontwarn androidx.lifecycle.**
-
--keep class androidx.lifecycle.LiveData { *; }
--keep class androidx.lifecycle.MutableLiveData { *; }
-
-# ============================================
-# HILT / DAGGER (DEPENDENCY INJECTION)
-# ============================================
--keep class dagger.** { *; }
--keep class javax.inject.** { *; }
--keep class * extends dagger.hilt.android.internal.managers.ViewComponentManager$FragmentContextWrapper { *; }
-
--keepclasseswithmembers class * {
-    @dagger.* <methods>;
-}
-
--keepclasseswithmembers class * {
-    @javax.inject.* <methods>;
-}
-
-# ============================================
-# FIREBASE
-# ============================================
--keep class com.google.firebase.** { *; }
--keep class com.google.android.gms.** { *; }
--dontwarn com.google.firebase.**
--dontwarn com.google.android.gms.**
-
-# ============================================
-# MEDIA SESSION
-# ============================================
--keep class androidx.media.** { *; }
--dontwarn androidx.media.**
-
-# ============================================
-# DEBUGGING (ĐÃ TẮT ĐỂ HIỆN LOG KHI DEBUG)
-# ============================================
-# Lưu ý: Tôi đã comment phần này để bạn thấy log.
-# Khi nào release thật sự lên store thì hãy bỏ comment.
-
-# -assumenosideeffects class android.util.Log {
-#     public static *** d(...);
-#     public static *** v(...);
-#     public static *** i(...);
-# }
-
-# -assumenosideeffects class android.util.Log {
-#     public static *** w(...) return;
-#     public static *** e(...) return;
-# }
-
-# ============================================
-# OPTIMIZATION
-# ============================================
-#-optimizationpasses 5
-#-dontusemixedcaseclassnames
-#-dontskipnonpubliclibraryclasses
-#-verbose
-
-# ============================================
-# CUSTOM APP CLASSES
-# ============================================
--keep public class com.newsspeech.auto.** { *; }
 
 -keep public class * extends android.app.Activity
 -keep public class * extends android.app.Service
 -keep public class * extends android.content.BroadcastReceiver
--keep public class * extends android.content.ContentProvider
 
--keepclasseswithmembernames class * {
-    native <methods>;
-}
-
--keepclasseswithmembers class * {
-    public <init>(android.content.Context, android.util.AttributeSet);
-}
-
--keepclasseswithmembers class * {
-    public <init>(android.content.Context, android.util.AttributeSet, int);
-}
-
-# ============================================
-# PARCELABLE & SERIALIZABLE
-# ============================================
 -keepclassmembers class * implements android.os.Parcelable {
     public static final ** CREATOR;
 }
 
--keepclassmembers class * implements java.io.Serializable {
-    static final long serialVersionUID;
-    private static final java.io.ObjectStreamField[] serialPersistentFields;
-    private void writeObject(java.io.ObjectOutputStream);
-    private void readObject(java.io.ObjectInputStream);
-    java.lang.Object writeReplace();
-    java.lang.Object readResolve();
-}
-
-# ============================================
-# ENUMS
-# ============================================
 -keepclassmembers enum * {
     public static **[] values();
     public static ** valueOf(java.lang.String);
 }
 
 # ============================================
-# R8 FULL MODE
+# R8 SETTINGS
 # ============================================
+
 -allowaccessmodification
 -repackageclasses ''
 
+# ⚠️ Bật khi release production
+# -dontobfuscate
+
+# ============================================
+# REMOVE LOGGING (BẬT KHI RELEASE)
+# ============================================
+
+# Uncomment trước khi release:
+# -assumenosideeffects class android.util.Log {
+#     public static *** d(...);
+#     public static *** v(...);
+#     public static *** i(...);
+# }

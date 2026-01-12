@@ -17,7 +17,10 @@
 
         <service
             android:name=".service.AutoSpeechService"
-            android:exported="true">
+            android:exported="false">
+
+<!--            android:enabled="true"-->
+<!--            android:label="NewsSpeech Auto">-->
 
             <intent-filter>
                 <action android:name="androidx.car.app.CarAppService" />

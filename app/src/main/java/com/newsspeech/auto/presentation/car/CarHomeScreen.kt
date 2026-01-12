@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
  */
 class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
 
-    private val TAG = "CarHomeScreen"
+    private val tag = "CarHomeScreen"
 
     // Repository đã dùng Dispatchers.IO
     private val newsRepo = NewsRepository(carContext)
@@ -31,7 +31,7 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
     private var isLoading = true
 
     init {
-        Log.d(TAG, "🖥️ CarHomeScreen initialized")
+        Log.d(tag, "🖥️ CarHomeScreen initialized")
         loadData()
     }
 
@@ -42,14 +42,14 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
     private fun loadData() {
         lifecycleScope.launch {
             try {
-                Log.d(TAG, "📥 Bắt đầu load tin tức...")
+                Log.d(tag, "📥 Bắt đầu load tin tức...")
 
                 // Gọi suspend function (tự động chạy trên IO thread)
                 newsList = newsRepo.loadNewsFromAssets()
 
-                Log.i(TAG, "✅ Load thành công ${newsList.size} tin")
+                Log.i(tag, "✅ Load thành công ${newsList.size} tin")
             } catch (e: Exception) {
-                Log.e(TAG, "❌ Lỗi khi load tin: ${e.message}", e)
+                Log.e(tag, "❌ Lỗi khi load tin: ${e.message}", e)
                 newsList = emptyList()
             } finally {
                 isLoading = false
@@ -63,7 +63,7 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
      * Được gọi mỗi khi invalidate()
      */
     override fun onGetTemplate(): Template {
-        Log.d(TAG, "🎨 onGetTemplate() called - isLoading: $isLoading, newsCount: ${newsList.size}")
+        Log.d(tag, "🎨 onGetTemplate() called - isLoading: $isLoading, newsCount: ${newsList.size}")
 
         // Case 1: Đang loading
         if (isLoading) {
@@ -110,14 +110,13 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
     private fun buildNewsListTemplate(list: List<News>): ListTemplate {
         val itemListBuilder = ItemList.Builder()
 
-        list.forEachIndexed { index, news ->
+        list.forEachIndexed { _, news ->
             val row = Row.Builder()
                 .setTitle(news.title)
 
             // Hiển thị description
             val description = when {
                 news.content.isNotEmpty() -> {
-                    // Giới hạn độ dài để không quá dài trên xe
                     if (news.content.length > 100) {
                         news.content.take(100) + "..."
                     } else {
@@ -161,11 +160,11 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
      * Xử lý khi user click vào 1 tin
      */
     private fun handleNewsClick(news: News) {
-        Log.d(TAG, "👆 User clicked: ${news.title}")
+        Log.d(tag, "👆 User clicked: ${news.title}")
 
         // Kiểm tra TTS có sẵn sàng không
         if (!NewsPlayer.isReady()) {
-            Log.w(TAG, "⚠️ TTS chưa sẵn sàng")
+            Log.w(tag, "⚠️ TTS chưa sẵn sàng")
             CarToast.makeText(
                 carContext,
                 "Đang khởi tạo TTS, vui lòng thử lại",
@@ -200,6 +199,6 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
             CarToast.LENGTH_SHORT
         ).show()
 
-        Log.i(TAG, "✅ Đã thêm tin vào queue")
+        Log.i(tag, "✅ Đã thêm tin vào queue")
     }
 }

@@ -30,7 +30,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
+                getDefaultProguardFile("proguard-android.txt"),
                 "proguard-rules.pro"
             )
         }
@@ -39,6 +39,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        encoding = "UTF-8"
     }
     kotlinOptions {
         jvmTarget = "17"
@@ -80,8 +81,8 @@ dependencies {
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
 
     // Firebase
-    implementation(platform("com.google.firebase:firebase-bom:33.2.0"))
-    implementation("com.google.firebase:firebase-firestore-ktx")
+//    implementation(platform("com.google.firebase:firebase-bom:33.2.0"))
+//    implementation("com.google.firebase:firebase-firestore-ktx")
 
     // Gson
     implementation("com.google.code.gson:gson:2.10.1")

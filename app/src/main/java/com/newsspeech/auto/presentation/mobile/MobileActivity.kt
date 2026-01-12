@@ -1,6 +1,5 @@
 package com.newsspeech.auto.presentation.mobile
 
-import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -13,22 +12,24 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Observer
 import androidx.lifecycle.lifecycleScope
 import com.newsspeech.auto.service.NewsPlayer
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import dagger.hilt.android.AndroidEntryPoint
 
 /**
  * Activity hiển thị trên điện thoại
  *
- * ✅ OPTIMIZED: Giảm thiểu main thread blocking
- * ✅ Simple UI: Giảm Compose rendering time
- * ✅ Async everything: TTS, state updates, operations
+ * ✅ FIX: TTS init KHÔNG block UI render
+ * ✅ FIX: setContent() gọi NGAY LẬP TỨC
+ * ✅ FIX: TTS init chạy SAU KHI UI đã render xong
  */
 @AndroidEntryPoint
 class MobileActivity : ComponentActivity() {
@@ -42,34 +43,45 @@ class MobileActivity : ComponentActivity() {
         val startTime = System.currentTimeMillis()
         Log.d(tag, "🚀 MobileActivity onCreate()")
 
-        // ✅ 1. Register TTS SYNC (nhanh, không block)
+        // ✅ 1. Register TTS đồng bộ (KHÔNG init)
         NewsPlayer.register("MobileActivity")
 
-        // ✅ 2. Init TTS ASYNC (chạy background)
-        lifecycleScope.launch(Dispatchers.IO) {
-            NewsPlayer.init(applicationContext) { success ->
-                val elapsed = System.currentTimeMillis() - startTime
-                if (success) {
-                    Log.i(tag, "✅ TTS init OK (${elapsed}ms)")
-                } else {
-                    Log.e(tag, "❌ TTS init FAIL (${elapsed}ms)")
-                }
-            }
-        }
-
-        // ✅ 3. Setup CarConnection
+        // ✅ 2. Setup CarConnection
         carConnection = CarConnection(applicationContext)
 
-        // ✅ 4. Set content IMMEDIATELY (không đợi gì cả)
+        // ✅ 3. Set content NGAY LẬP TỨC (< 50ms)
         setContent {
-            // ✅ MaterialTheme bọc ngoài để cache theme
             MaterialTheme {
                 MobileApp(carConnection = carConnection)
             }
         }
 
+        val elapsedSetContent = System.currentTimeMillis() - startTime
+        Log.d(tag, "⏱️ setContent() completed in ${elapsedSetContent}ms")
+
+        // ✅ 4. QUAN TRỌNG: Init TTS SAU KHI UI render
+        // Delay 100ms để đảm bảo frame đầu tiên đã vẽ xong
+        lifecycleScope.launch {
+            delay(100) // Chờ UI render xong
+
+            withContext(Dispatchers.IO) {
+                val ttsStartTime = System.currentTimeMillis()
+
+                NewsPlayer.init(applicationContext) { success ->
+                    val elapsed = System.currentTimeMillis() - ttsStartTime
+                    runOnUiThread {
+                        if (success) {
+                            Log.i(tag, "✅ TTS init OK (${elapsed}ms)")
+                        } else {
+                            Log.e(tag, "❌ TTS init FAIL (${elapsed}ms)")
+                        }
+                    }
+                }
+            }
+        }
+
         val elapsedTotal = System.currentTimeMillis() - startTime
-        Log.d(tag, "⏱️ onCreate() completed in ${elapsedTotal}ms")
+        Log.d(tag, "✅ onCreate() completed in ${elapsedTotal}ms (without TTS)")
     }
 
     override fun onResume() {
@@ -85,7 +97,7 @@ class MobileActivity : ComponentActivity() {
 }
 
 // ========================================
-// COMPOSABLES - ULTRA SIMPLIFIED
+// COMPOSABLES - OPTIMIZED
 // ========================================
 
 @Composable
@@ -103,7 +115,6 @@ fun MobileApp(carConnection: CarConnection) {
         }
     }
 
-    // ✅ Simple conditional rendering
     if (connectionType == CarConnection.CONNECTION_TYPE_PROJECTION) {
         CarConnectedScreen()
     } else {
@@ -134,33 +145,29 @@ fun CarConnectedScreen() {
 }
 
 /**
- * ✅ ULTRA SIMPLE UI - Minimum components
+ * ✅ OPTIMIZED: Sử dụng remember để giảm recomposition
  */
 @Composable
 fun MobileAppScreen() {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // ✅ Only 2 states
-    var isTtsReady by remember { mutableStateOf(false) }
-    var statusMsg by remember { mutableStateOf("Đang khởi tạo TTS...") }
+    // ✅ Collect StateFlow (real-time updates)
+    val isTtsReady by NewsPlayer.readyState.collectAsState()
+    val queueSize by NewsPlayer.queueSize.collectAsState()
+    val isSpeaking by NewsPlayer.currentlySpeaking.collectAsState()
 
-    // ✅ Async TTS status check
-    LaunchedEffect(Unit) {
-        launch(Dispatchers.Default) {
-            kotlinx.coroutines.delay(1000) // Wait for init
-            while (true) {
-                val ready = NewsPlayer.isReady()
-                if (ready != isTtsReady) {
-                    isTtsReady = ready
-                    if (ready) statusMsg = "Sẵn sàng"
-                }
-                kotlinx.coroutines.delay(2000)
+    // ✅ Remember computed state để tránh recompute mỗi frame
+    val statusMsg by remember {
+        derivedStateOf {
+            when {
+                !isTtsReady -> "Đang khởi tạo TTS..."
+                isSpeaking -> "Đang phát... (còn $queueSize tin)"
+                queueSize > 0 -> "Có $queueSize tin đang chờ"
+                else -> "Sẵn sàng"
             }
         }
     }
 
-    // ✅ Simple Surface (không dùng Scaffold - quá phức tạp)
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
@@ -173,7 +180,7 @@ fun MobileAppScreen() {
             verticalArrangement = Arrangement.Center
         ) {
             // Status Card
-            StatusCard(isTtsReady = isTtsReady)
+            StatusCard(isTtsReady = isTtsReady, isSpeaking = isSpeaking)
 
             Spacer(Modifier.height(32.dp))
 
@@ -197,7 +204,6 @@ fun MobileAppScreen() {
             // Buttons
             ActionButtons(
                 isTtsReady = isTtsReady,
-                onStatusChange = { statusMsg = it },
                 scope = scope
             )
 
@@ -213,17 +219,14 @@ fun MobileAppScreen() {
     }
 }
 
-/**
- * Status card - Minimal styling
- */
 @Composable
-private fun StatusCard(isTtsReady: Boolean) {
+private fun StatusCard(isTtsReady: Boolean, isSpeaking: Boolean) {
     Surface(
         shape = MaterialTheme.shapes.medium,
-        color = if (isTtsReady) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.errorContainer
+        color = when {
+            isSpeaking -> MaterialTheme.colorScheme.tertiaryContainer
+            isTtsReady -> MaterialTheme.colorScheme.primaryContainer
+            else -> MaterialTheme.colorScheme.errorContainer
         },
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -234,21 +237,21 @@ private fun StatusCard(isTtsReady: Boolean) {
             Text("Trạng thái TTS", style = MaterialTheme.typography.labelMedium)
             Spacer(Modifier.height(4.dp))
             Text(
-                if (isTtsReady) "✅ Đã sẵn sàng" else "⌛ Đang khởi tạo",
+                when {
+                    isSpeaking -> "🔊 Đang phát"
+                    isTtsReady -> "✅ Đã sẵn sàng"
+                    else -> "⌛ Đang khởi tạo"
+                },
                 style = MaterialTheme.typography.titleMedium
             )
         }
     }
 }
 
-/**
- * Action buttons - Ultra simple
- */
 @Composable
 private fun ActionButtons(
     isTtsReady: Boolean,
-    onStatusChange: (String) -> Unit,
-    scope: kotlinx.coroutines.CoroutineScope
+    scope: CoroutineScope
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -260,9 +263,6 @@ private fun ActionButtons(
                 if (isTtsReady) {
                     scope.launch(Dispatchers.Default) {
                         NewsPlayer.addToQueue("Xin chào! Đây là thử nghiệm âm thanh từ NewsSpeech Auto.")
-                        kotlinx.coroutines.withContext(Dispatchers.Main) {
-                            onStatusChange("Đang phát...")
-                        }
                     }
                 }
             },
@@ -277,9 +277,6 @@ private fun ActionButtons(
             onClick = {
                 scope.launch(Dispatchers.Default) {
                     NewsPlayer.stop()
-                    kotlinx.coroutines.withContext(Dispatchers.Main) {
-                        onStatusChange("Đã dừng")
-                    }
                 }
             },
             modifier = Modifier.fillMaxWidth(0.8f),

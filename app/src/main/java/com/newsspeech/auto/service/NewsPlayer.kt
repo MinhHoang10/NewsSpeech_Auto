@@ -4,6 +4,9 @@ import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
@@ -14,6 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * ✅ Thread-safe
  * ✅ Hỗ trợ nhiều component sử dụng đồng thời (Activity + Service)
  * ✅ Tự động quản lý lifecycle
+ * ✅ StateFlow để observe trạng thái realtime (không polling)
  */
 object NewsPlayer : TextToSpeech.OnInitListener {
 
@@ -34,6 +38,16 @@ object NewsPlayer : TextToSpeech.OnInitListener {
     // === Queue Management ===
     private val queue = ConcurrentLinkedQueue<String>()
     private val isSpeaking = AtomicBoolean(false)
+
+    // === StateFlow for UI ===
+    private val _readyState = MutableStateFlow(false)
+    val readyState: StateFlow<Boolean> = _readyState.asStateFlow()
+
+    private val _queueSize = MutableStateFlow(0)
+    val queueSize: StateFlow<Int> = _queueSize.asStateFlow()
+
+    private val _currentlySpeaking = MutableStateFlow(false)
+    val currentlySpeaking: StateFlow<Boolean> = _currentlySpeaking.asStateFlow()
 
     // ========================================
     // LIFECYCLE METHODS
@@ -78,6 +92,9 @@ object NewsPlayer : TextToSpeech.OnInitListener {
     /**
      * Khởi tạo TTS (thread-safe, có thể gọi từ nhiều nơi)
      *
+     * ⚠️ QUAN TRỌNG: Hàm này PHẢI được gọi từ background thread
+     * vì TextToSpeech constructor block thread 3-8 giây
+     *
      * @param context Application context
      * @param callback Nhận kết quả init (true/false)
      */
@@ -109,8 +126,21 @@ object NewsPlayer : TextToSpeech.OnInitListener {
 
         try {
             if (tts == null) {
-                // QUAN TRỌNG: Dùng applicationContext để tránh memory leak
+                // ✅ PRE-LOAD: Trigger class loading trước khi gọi constructor
+                try {
+                    Class.forName("android.speech.tts.TextToSpeech")
+                    Class.forName("android.speech.tts.TextToSpeech\$OnInitListener")
+                } catch (e: ClassNotFoundException) {
+                    // Ignore
+                }
+
+                val initStartTime = System.currentTimeMillis()
+
+                // Constructor BLOCK thread 3-8 giây!
                 tts = TextToSpeech(context.applicationContext, this)
+
+                val elapsed = System.currentTimeMillis() - initStartTime
+                Log.d(TAG, "⏱️ TextToSpeech constructor took ${elapsed}ms")
             }
         } catch (e: Exception) {
             Log.e(TAG, "❌ Exception khi khởi tạo TTS", e)
@@ -118,9 +148,9 @@ object NewsPlayer : TextToSpeech.OnInitListener {
             notifyAllCallbacks(false)
         }
     }
-
     /**
      * Callback từ TextToSpeech khi init xong
+     * ⚠️ Được gọi trên MAIN THREAD bởi TTS Engine
      */
     override fun onInit(status: Int) {
         isInitializing = false
@@ -134,16 +164,19 @@ object NewsPlayer : TextToSpeech.OnInitListener {
                         Log.e(TAG, "❌ Thiếu dữ liệu ngôn ngữ Tiếng Việt")
                         Log.e(TAG, "💡 Hướng dẫn: Vào Settings → Language & Input → Text-to-Speech → Tải tiếng Việt")
                         isReady = false
+                        _readyState.value = false
                         notifyAllCallbacks(false)
                     }
                     TextToSpeech.LANG_NOT_SUPPORTED -> {
                         Log.e(TAG, "❌ TTS Engine không hỗ trợ Tiếng Việt")
                         isReady = false
+                        _readyState.value = false
                         notifyAllCallbacks(false)
                     }
                     else -> {
                         Log.i(TAG, "✅ TTS khởi tạo thành công với ngôn ngữ Tiếng Việt")
                         isReady = true
+                        _readyState.value = true
                         setupUtteranceListener()
                         notifyAllCallbacks(true)
                     }
@@ -154,12 +187,14 @@ object NewsPlayer : TextToSpeech.OnInitListener {
                 Log.e(TAG, "❌ TTS Engine bị disable hoặc không khả dụng")
                 Log.e(TAG, "💡 Kiểm tra: Settings → Apps → Google Text-to-Speech → Enabled")
                 isReady = false
+                _readyState.value = false
                 notifyAllCallbacks(false)
             }
 
             else -> {
                 Log.e(TAG, "❌ TTS Init thất bại với status không xác định: $status")
                 isReady = false
+                _readyState.value = false
                 notifyAllCallbacks(false)
             }
         }
@@ -190,20 +225,24 @@ object NewsPlayer : TextToSpeech.OnInitListener {
         tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
                 isSpeaking.set(true)
+                _currentlySpeaking.value = true
                 Log.d(TAG, "🔊 Bắt đầu đọc: $utteranceId")
             }
 
             override fun onDone(utteranceId: String?) {
                 Log.d(TAG, "✅ Đã đọc xong: $utteranceId")
                 isSpeaking.set(false)
+                _currentlySpeaking.value = false
 
                 // Tự động đọc tin tiếp theo
                 speakNext()
             }
 
+            @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) {
                 Log.e(TAG, "❌ Lỗi khi đọc: $utteranceId")
                 isSpeaking.set(false)
+                _currentlySpeaking.value = false
 
                 // Vẫn thử đọc tin tiếp theo
                 speakNext()
@@ -227,8 +266,8 @@ object NewsPlayer : TextToSpeech.OnInitListener {
      * @param text Nội dung cần đọc
      */
     fun addToQueue(text: String) {
-        if (!isReady) {
-            Log.w(TAG, "⚠️ TTS chưa sẵn sàng, không thể thêm vào queue")
+        if (!isReady || text.isBlank()) {
+            Log.w(TAG, "Cannot add to queue")
             return
         }
 
@@ -238,12 +277,14 @@ object NewsPlayer : TextToSpeech.OnInitListener {
         }
 
         queue.add(text)
+        _queueSize.value = queue.size
         Log.d(TAG, "➕ Thêm vào queue: '${text.take(50)}...' (Queue size: ${queue.size})")
 
         // CompareAndSet: Chỉ 1 thread được quyền gọi speakNext()
         // Thread thắng sẽ set isSpeaking = true và được đọc
         // Thread thua sẽ thấy isSpeaking = true và thoát
         if (isSpeaking.compareAndSet(false, true)) {
+            _currentlySpeaking.value = true
             Log.d(TAG, "🎤 Thread này được quyền đọc tin đầu tiên")
             speakNext()
         } else {
@@ -259,7 +300,8 @@ object NewsPlayer : TextToSpeech.OnInitListener {
         val nextText = queue.poll()
 
         if (nextText != null) {
-            Log.d(TAG, "📢 Đọc tin: '${nextText.take(50)}...' (Còn ${queue.size} tin trong queue)")
+            _queueSize.value = queue.size
+            Log.d(TAG, "🔢 Đọc tin: '${nextText.take(50)}...' (Còn ${queue.size} tin trong queue)")
 
             val params = android.os.Bundle()
             params.putString(
@@ -273,10 +315,13 @@ object NewsPlayer : TextToSpeech.OnInitListener {
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Exception khi gọi speak()", e)
                 isSpeaking.set(false)
+                _currentlySpeaking.value = false
             }
         } else {
-            Log.d(TAG, "📭 Hàng đợi rỗng, dừng phát")
+            Log.d(TAG, "🔇 Hàng đợi rỗng, dừng phát")
             isSpeaking.set(false)
+            _currentlySpeaking.value = false
+            _queueSize.value = 0
         }
     }
 
@@ -286,6 +331,7 @@ object NewsPlayer : TextToSpeech.OnInitListener {
     fun stop() {
         val queueSize = queue.size
         queue.clear()
+        _queueSize.value = 0
 
         try {
             tts?.stop()
@@ -295,6 +341,7 @@ object NewsPlayer : TextToSpeech.OnInitListener {
         }
 
         isSpeaking.set(false)
+        _currentlySpeaking.value = false
     }
 
     /**
@@ -318,6 +365,10 @@ object NewsPlayer : TextToSpeech.OnInitListener {
             activeUsers = 0
             pendingCallbacks.clear()
 
+            _readyState.value = false
+            _queueSize.value = 0
+            _currentlySpeaking.value = false
+
             Log.i(TAG, "✅ TTS đã shutdown hoàn toàn")
         }
     }
@@ -329,15 +380,15 @@ object NewsPlayer : TextToSpeech.OnInitListener {
     /**
      * Lấy thông tin trạng thái để debug
      */
-    fun getStatus(): String {
-        return """
-            |TTS Status:
-            |  - Ready: $isReady
-            |  - Initializing: $isInitializing
-            |  - Active Users: $activeUsers
-            |  - Is Speaking: ${isSpeaking.get()}
-            |  - Queue Size: ${queue.size}
-            |  - TTS Instance: ${if (tts != null) "✓" else "✗"}
-        """.trimMargin()
-    }
+//    fun getStatus(): String {
+//        return """
+//            |TTS Status:
+//            |  - Ready: $isReady
+//            |  - Initializing: $isInitializing
+//            |  - Active Users: $activeUsers
+//            |  - Is Speaking: ${isSpeaking.get()}
+//            |  - Queue Size: ${queue.size}
+//            |  - TTS Instance: ${if (tts != null) "✓" else "✗"}
+//        """.trimMargin()
+//    }
 }
