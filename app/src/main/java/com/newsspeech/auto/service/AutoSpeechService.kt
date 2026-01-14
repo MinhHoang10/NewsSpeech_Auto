@@ -7,35 +7,47 @@ import androidx.car.app.Screen
 import androidx.car.app.Session
 import androidx.car.app.validation.HostValidator
 import com.newsspeech.auto.presentation.car.CarHomeScreen
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 /**
  * Service cho Android Auto
  *
- * ✅ Đăng ký/hủy đăng ký NewsPlayer đúng lifecycle
- * ✅ TTS chỉ shutdown khi cả Activity và Service đều thoát
- * ✅ Init TTS trên background thread THẬT SỰ để không block UI
+ * ✅ Tạo CoroutineScope riêng vì CarAppService không phải LifecycleOwner
+ * ✅ Init TTS trên IO thread ngay khi Service tạo
+ * ✅ Cancel scope khi Service destroy để tránh leak
  */
 class AutoSpeechService : CarAppService() {
 
     private val tag = "AutoSpeechService"
 
+    // ✅ Tạo CoroutineScope riêng cho Service
+    // SupervisorJob: Nếu 1 job fail, các job khác vẫn chạy
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     override fun onCreate() {
         super.onCreate()
         Log.d(tag, "🚀 AutoSpeechService onCreate()")
 
-        // ✅ Pre-init TTS ngay khi Service được tạo (background thread THẬT)
-        // QUAN TRỌNG: Dùng Thread thay vì coroutine vì TextToSpeech
-        // constructor BLOCK thread 3-8 giây
-        Thread {
-            NewsPlayer.register("AutoSpeechService")
+        // ✅ Register TTS đồng bộ
+        NewsPlayer.register("AutoSpeechService")
+
+        // ✅ Pre-init TTS trên IO thread (không block main thread)
+        serviceScope.launch(Dispatchers.IO) {
+            val startTime = System.currentTimeMillis()
+
             NewsPlayer.init(applicationContext) { success ->
+                val elapsed = System.currentTimeMillis() - startTime
                 if (success) {
-                    Log.i(tag, "✅ TTS pre-init thành công trong Service")
+                    Log.i(tag, "✅ TTS pre-init OK trong Service (${elapsed}ms)")
                 } else {
-                    Log.e(tag, "❌ TTS pre-init thất bại trong Service")
+                    Log.e(tag, "❌ TTS pre-init FAIL trong Service (${elapsed}ms)")
                 }
             }
-        }.start()
+        }
     }
 
     override fun onCreateSession(): Session {
@@ -45,9 +57,8 @@ class AutoSpeechService : CarAppService() {
             override fun onCreateScreen(intent: Intent): Screen {
                 Log.d(tag, "🖥️ onCreateScreen() - Tạo CarHomeScreen")
 
-                // ✅ Không cần register/init ở đây nữa vì đã làm trong onCreate()
-                // Screen có thể render ngay, TTS sẽ sẵn sàng sau
-
+                // ✅ TTS có thể chưa sẵn sàng, nhưng Screen vẫn render được
+                // CarHomeScreen sẽ hiển thị "Đang tải..." nếu TTS chưa init
                 return CarHomeScreen(carContext)
             }
         }
@@ -59,6 +70,9 @@ class AutoSpeechService : CarAppService() {
 
     override fun onDestroy() {
         Log.d(tag, "🛑 AutoSpeechService onDestroy()")
+
+        // ✅ Cancel tất cả coroutines đang chạy
+        serviceScope.cancel()
 
         // ✅ Hủy đăng ký TTS
         NewsPlayer.unregister("AutoSpeechService")
