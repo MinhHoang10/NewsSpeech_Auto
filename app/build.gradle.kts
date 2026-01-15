@@ -4,6 +4,7 @@ plugins {
     id("kotlin-kapt")
     id("dagger.hilt.android.plugin")
     id("com.google.gms.google-services")
+//    id("io.realm.kotlin") version "1.13.0"
 }
 
 android {
@@ -95,4 +96,8 @@ dependencies {
     // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
+
+    // Mongo
+//    implementation("org.mongodb:mongodb-driver-sync:4.11.1")
+
 }
