@@ -9,6 +9,7 @@ import androidx.lifecycle.lifecycleScope
 import com.newsspeech.auto.data.repository.NewsRepository
 import com.newsspeech.auto.domain.model.News
 import com.newsspeech.auto.service.NewsPlayer
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 /**
@@ -16,6 +17,7 @@ import kotlinx.coroutines.launch
  *
  * ✅ Load dữ liệu bất đồng bộ không block UI
  * ✅ Cache dữ liệu để không load lại khi invalidate()
+ * ✅ Observe TTS state như MobileActivity
  */
 class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
 
@@ -30,9 +32,56 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
     // Trạng thái loading
     private var isLoading = true
 
+    // ✅ TTS State (observe từ StateFlow)
+    private var isTtsReady = false
+    private var isSpeaking = false
+    private var queueSize = 0
+
     init {
         Log.d(tag, "🖥️ CarHomeScreen initialized")
         loadData()
+        observeTtsState()  // ✅ Quan sát TTS state
+    }
+
+    /**
+     * ✅ Observe TTS state giống MobileActivity
+     */
+    private fun observeTtsState() {
+        // Observe readyState
+        lifecycleScope.launch {
+            NewsPlayer.readyState.collectLatest { ready ->
+                val changed = isTtsReady != ready
+                isTtsReady = ready
+                Log.d(tag, "🎤 TTS ready: $ready")
+                if (changed && !isLoading) {
+                    invalidate()  // Re-render khi state thay đổi
+                }
+            }
+        }
+
+        // Observe speaking state
+        lifecycleScope.launch {
+            NewsPlayer.currentlySpeaking.collectLatest { speaking ->
+                val changed = isSpeaking != speaking
+                isSpeaking = speaking
+                Log.d(tag, "🔊 TTS speaking: $speaking")
+                if (changed && !isLoading) {
+                    invalidate()
+                }
+            }
+        }
+
+        // Observe queue size
+        lifecycleScope.launch {
+            NewsPlayer.queueSize.collectLatest { size ->
+                val changed = queueSize != size
+                queueSize = size
+                Log.d(tag, "📋 Queue size: $size")
+                if (changed && !isLoading) {
+                    invalidate()
+                }
+            }
+        }
     }
 
     /**
@@ -63,7 +112,7 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
      * Được gọi mỗi khi invalidate()
      */
     override fun onGetTemplate(): Template {
-        Log.d(tag, "🎨 onGetTemplate() called - isLoading: $isLoading, newsCount: ${newsList.size}")
+        Log.d(tag, "🎨 onGetTemplate() - loading:$isLoading, news:${newsList.size}, ttsReady:$isTtsReady, speaking:$isSpeaking, queue:$queueSize")
 
         // Case 1: Đang loading
         if (isLoading) {
@@ -110,7 +159,35 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
     private fun buildNewsListTemplate(list: List<News>): ListTemplate {
         val itemListBuilder = ItemList.Builder()
 
-        list.forEachIndexed { _, news ->
+        // ✅ Thêm TTS status row ở đầu
+        val ttsStatusRow = Row.Builder()
+            .setTitle(
+                when {
+                    !isTtsReady -> "⏳ Đang khởi tạo TTS..."
+                    isSpeaking -> "🔊 Đang phát ($queueSize tin trong queue)"
+                    queueSize > 0 -> "⏸️ Có $queueSize tin đang chờ"
+                    else -> "✅ TTS sẵn sàng - Chạm vào tin để nghe"
+                }
+            )
+            .setBrowsable(false)  // Không cho click vào row này
+            .build()
+
+        itemListBuilder.addItem(ttsStatusRow)
+
+        // Thêm vào buildNewsListTemplate() sau ttsStatusRow
+        val testRow = Row.Builder()
+            .setTitle(" TEST TTS")
+            .addText("Click để test giọng nói")
+            .setOnClickListener {
+                NewsPlayer.addToQueue("Đây là test TTS trên Android Auto")
+                CarToast.makeText(carContext, "Test TTS", CarToast.LENGTH_SHORT).show()
+            }
+            .build()
+
+        itemListBuilder.addItem(testRow)
+
+        // Thêm các tin tức
+        list.forEachIndexed { index, news ->
             val row = Row.Builder()
                 .setTitle(news.title)
 
@@ -135,15 +212,20 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
                     }
                     if (news.timestamp.isNotEmpty()) {
                         if (isNotEmpty()) append(" • ")
-                        append(news.timestamp)
+                        append(formatTimestamp(news.timestamp))
                     }
                 }
                 row.addText(metadata)
             }
 
-            // Xử lý click → Đọc tin
-            row.setOnClickListener {
-                handleNewsClick(news)
+            // ✅ Disable row nếu TTS chưa ready
+            if (isTtsReady) {
+                row.setOnClickListener {
+                    handleNewsClick(news)
+                }
+            } else {
+                row.addText("⏳ TTS đang khởi tạo...")
+                row.setBrowsable(false)
             }
 
             itemListBuilder.addItem(row.build())
@@ -162,8 +244,8 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
     private fun handleNewsClick(news: News) {
         Log.d(tag, "👆 User clicked: ${news.title}")
 
-        // Kiểm tra TTS có sẵn sàng không
-        if (!NewsPlayer.isReady()) {
+        // ✅ Kiểm tra TTS state từ observed value
+        if (!isTtsReady) {
             Log.w(tag, "⚠️ TTS chưa sẵn sàng")
             CarToast.makeText(
                 carContext,
@@ -173,7 +255,7 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
             return
         }
 
-        // Tạo nội dung đọc
+        // Tạo nội dung đọc giống MobileActivity
         val contentToRead = buildString {
             append("Tin từ ")
             if (news.source.isNotEmpty()) {
@@ -189,16 +271,42 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
             }
         }
 
-        // Thêm vào hàng đợi
-        NewsPlayer.addToQueue(contentToRead)
+        // ✅ Thêm vào queue trong coroutine như MobileActivity
+        lifecycleScope.launch {
+            NewsPlayer.addToQueue(contentToRead)
 
-        // Hiển thị thông báo
-        CarToast.makeText(
-            carContext,
-            "🔊 Đang phát...",
-            CarToast.LENGTH_SHORT
-        ).show()
+            // Hiển thị thông báo
+            CarToast.makeText(
+                carContext,
+                "🔊 Đang phát...",
+                CarToast.LENGTH_SHORT
+            ).show()
 
-        Log.i(tag, "✅ Đã thêm tin vào queue")
+            Log.i(tag, "✅ Đã thêm tin vào queue")
+        }
+    }
+
+    /**
+     * Format timestamp giống MobileActivity
+     */
+    private fun formatTimestamp(timestamp: String): String {
+        return try {
+            when {
+                timestamp.contains("T") -> {
+                    val parts = timestamp.split("T")
+                    val date = parts[0].split("-")
+                    val time = parts.getOrNull(1)?.split(":")
+
+                    if (date.size >= 3 && time != null && time.size >= 2) {
+                        "${date[2]}/${date[1]} ${time[0]}:${time[1]}"
+                    } else {
+                        timestamp
+                    }
+                }
+                else -> timestamp
+            }
+        } catch (e: Exception) {
+            timestamp
+        }
     }
 }

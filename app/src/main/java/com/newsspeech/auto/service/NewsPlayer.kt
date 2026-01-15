@@ -1,6 +1,10 @@
 package com.newsspeech.auto.service
 
 import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.os.Build
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
@@ -16,8 +20,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * ✅ Thread-safe
  * ✅ Hỗ trợ nhiều component sử dụng đồng thời (Activity + Service)
- * ✅ Tự động quản lý lifecycle
- * ✅ StateFlow để observe trạng thái realtime (không polling)
+ * ✅ Audio Focus cho Android Auto
+ * ✅ StateFlow để observe trạng thái realtime
  */
 object NewsPlayer : TextToSpeech.OnInitListener {
 
@@ -26,6 +30,12 @@ object NewsPlayer : TextToSpeech.OnInitListener {
     // === TTS Core ===
     private var tts: TextToSpeech? = null
     private var isReady = false
+    private var appContext: Context? = null  // ✅ Lưu context để request audio focus
+
+    // === Audio Focus ===
+    private var audioManager: AudioManager? = null
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var hasAudioFocus = false
 
     // === Init Management ===
     private var isInitializing = false
@@ -53,12 +63,6 @@ object NewsPlayer : TextToSpeech.OnInitListener {
     // LIFECYCLE METHODS
     // ========================================
 
-    /**
-     * Đăng ký component sử dụng TTS
-     * Gọi trong onCreate() của Activity/Service
-     *
-     * @param tag Tên component để debug
-     */
     fun register(tag: String) {
         synchronized(usersLock) {
             activeUsers++
@@ -66,13 +70,6 @@ object NewsPlayer : TextToSpeech.OnInitListener {
         }
     }
 
-    /**
-     * Hủy đăng ký component
-     * Gọi trong onDestroy() của Activity/Service
-     * TTS chỉ shutdown khi activeUsers = 0
-     *
-     * @param tag Tên component để debug
-     */
     fun unregister(tag: String) {
         synchronized(usersLock) {
             activeUsers--
@@ -89,17 +86,16 @@ object NewsPlayer : TextToSpeech.OnInitListener {
     // INITIALIZATION
     // ========================================
 
-    /**
-     * Khởi tạo TTS (thread-safe, có thể gọi từ nhiều nơi)
-     *
-     * ⚠️ QUAN TRỌNG: Hàm này PHẢI được gọi từ background thread
-     * vì TextToSpeech constructor block thread 3-8 giây
-     *
-     * @param context Application context
-     * @param callback Nhận kết quả init (true/false)
-     */
     @Synchronized
     fun init(context: Context, callback: ((Boolean) -> Unit)? = null) {
+        // Lưu context
+        if (appContext == null) {
+            appContext = context.applicationContext
+            // ✅ Khởi tạo AudioManager
+            audioManager = appContext?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            Log.d(TAG, "🔊 AudioManager initialized: ${audioManager != null}")
+        }
+
         // Case 1: Đã sẵn sàng
         if (isReady && tts != null) {
             Log.d(TAG, "✅ TTS đã sẵn sàng, không cần init lại")
@@ -107,7 +103,7 @@ object NewsPlayer : TextToSpeech.OnInitListener {
             return
         }
 
-        // Case 2: Đang khởi tạo → thêm callback vào queue
+        // Case 2: Đang khởi tạo
         if (isInitializing) {
             Log.w(TAG, "⏳ TTS đang được khởi tạo bởi thread khác, thêm callback vào hàng đợi")
             if (callback != null) {
@@ -116,7 +112,7 @@ object NewsPlayer : TextToSpeech.OnInitListener {
             return
         }
 
-        // Case 3: Chưa init → bắt đầu init
+        // Case 3: Chưa init
         Log.i(TAG, "🚀 Bắt đầu khởi tạo TTS...")
         isInitializing = true
 
@@ -126,7 +122,7 @@ object NewsPlayer : TextToSpeech.OnInitListener {
 
         try {
             if (tts == null) {
-                // ✅ PRE-LOAD: Trigger class loading trước khi gọi constructor
+                // Pre-load classes
                 try {
                     Class.forName("android.speech.tts.TextToSpeech")
                     Class.forName("android.speech.tts.TextToSpeech\$OnInitListener")
@@ -135,10 +131,7 @@ object NewsPlayer : TextToSpeech.OnInitListener {
                 }
 
                 val initStartTime = System.currentTimeMillis()
-
-                // Constructor BLOCK thread 3-8 giây!
                 tts = TextToSpeech(context.applicationContext, this)
-
                 val elapsed = System.currentTimeMillis() - initStartTime
                 Log.d(TAG, "⏱️ TextToSpeech constructor took ${elapsed}ms")
             }
@@ -148,10 +141,7 @@ object NewsPlayer : TextToSpeech.OnInitListener {
             notifyAllCallbacks(false)
         }
     }
-    /**
-     * Callback từ TextToSpeech khi init xong
-     * ⚠️ Được gọi trên MAIN THREAD bởi TTS Engine
-     */
+
     override fun onInit(status: Int) {
         isInitializing = false
 
@@ -162,7 +152,6 @@ object NewsPlayer : TextToSpeech.OnInitListener {
                 when (langResult) {
                     TextToSpeech.LANG_MISSING_DATA -> {
                         Log.e(TAG, "❌ Thiếu dữ liệu ngôn ngữ Tiếng Việt")
-                        Log.e(TAG, "💡 Hướng dẫn: Vào Settings → Language & Input → Text-to-Speech → Tải tiếng Việt")
                         isReady = false
                         _readyState.value = false
                         notifyAllCallbacks(false)
@@ -175,6 +164,13 @@ object NewsPlayer : TextToSpeech.OnInitListener {
                     }
                     else -> {
                         Log.i(TAG, "✅ TTS khởi tạo thành công với ngôn ngữ Tiếng Việt")
+
+                        // ✅ Configure TTS for Android Auto
+                        tts?.apply {
+                            setSpeechRate(1.0f)  // Normal speed
+                            setPitch(1.0f)       // Normal pitch
+                        }
+
                         isReady = true
                         _readyState.value = true
                         setupUtteranceListener()
@@ -185,7 +181,6 @@ object NewsPlayer : TextToSpeech.OnInitListener {
 
             TextToSpeech.ERROR -> {
                 Log.e(TAG, "❌ TTS Engine bị disable hoặc không khả dụng")
-                Log.e(TAG, "💡 Kiểm tra: Settings → Apps → Google Text-to-Speech → Enabled")
                 isReady = false
                 _readyState.value = false
                 notifyAllCallbacks(false)
@@ -200,9 +195,6 @@ object NewsPlayer : TextToSpeech.OnInitListener {
         }
     }
 
-    /**
-     * Gọi tất cả callback đang chờ kết quả init
-     */
     @Synchronized
     private fun notifyAllCallbacks(success: Boolean) {
         val count = pendingCallbacks.size
@@ -218,9 +210,6 @@ object NewsPlayer : TextToSpeech.OnInitListener {
         pendingCallbacks.clear()
     }
 
-    /**
-     * Setup listener để theo dõi quá trình đọc
-     */
     private fun setupUtteranceListener() {
         tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
@@ -234,7 +223,7 @@ object NewsPlayer : TextToSpeech.OnInitListener {
                 isSpeaking.set(false)
                 _currentlySpeaking.value = false
 
-                // Tự động đọc tin tiếp theo
+                // Đọc tin tiếp theo
                 speakNext()
             }
 
@@ -247,27 +236,128 @@ object NewsPlayer : TextToSpeech.OnInitListener {
                 // Vẫn thử đọc tin tiếp theo
                 speakNext()
             }
+
+            override fun onStop(utteranceId: String?, interrupted: Boolean) {
+                super.onStop(utteranceId, interrupted)
+                Log.d(TAG, "⏹️ TTS stopped: $utteranceId, interrupted: $interrupted")
+
+                // ✅ Abandon audio focus when stopped
+                abandonAudioFocus()
+            }
         })
+    }
+
+    // ========================================
+    // AUDIO FOCUS MANAGEMENT
+    // ========================================
+
+    /**
+     * ✅ Request audio focus before speaking
+     */
+    private fun requestAudioFocus(): Boolean {
+        if (audioManager == null) {
+            Log.e(TAG, "❌ AudioManager is null, cannot request audio focus")
+            return false
+        }
+
+        if (hasAudioFocus) {
+            Log.d(TAG, "🔊 Already has audio focus")
+            return true
+        }
+
+        val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // Android 8.0+
+            val audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)  // ✅ USAGE_MEDIA for Android Auto
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+
+            audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                .setAudioAttributes(audioAttributes)
+                .setWillPauseWhenDucked(false)
+                .setOnAudioFocusChangeListener { focusChange ->
+                    handleAudioFocusChange(focusChange)
+                }
+                .build()
+
+            audioManager?.requestAudioFocus(audioFocusRequest!!)
+        } else {
+            // Android < 8.0
+            @Suppress("DEPRECATION")
+            audioManager?.requestAudioFocus(
+                { focusChange -> handleAudioFocusChange(focusChange) },
+                AudioManager.STREAM_MUSIC,  // ✅ Use MUSIC stream
+                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+            )
+        } ?: AudioManager.AUDIOFOCUS_REQUEST_FAILED
+
+        hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+
+        if (hasAudioFocus) {
+            Log.i(TAG, "✅ Audio focus GRANTED")
+        } else {
+            Log.e(TAG, "❌ Audio focus DENIED (result: $result)")
+        }
+
+        return hasAudioFocus
+    }
+
+    /**
+     * ✅ Abandon audio focus when done
+     */
+    private fun abandonAudioFocus() {
+        if (!hasAudioFocus) {
+            return
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest?.let {
+                audioManager?.abandonAudioFocusRequest(it)
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager?.abandonAudioFocus { }
+        }
+
+        hasAudioFocus = false
+        Log.d(TAG, "🔇 Audio focus abandoned")
+    }
+
+    /**
+     * ✅ Handle audio focus changes
+     */
+    private fun handleAudioFocusChange(focusChange: Int) {
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                Log.d(TAG, "🔊 Audio focus GAIN")
+                hasAudioFocus = true
+            }
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                Log.w(TAG, "🔇 Audio focus LOSS - stopping TTS")
+                hasAudioFocus = false
+                stop()
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                Log.w(TAG, "⏸️ Audio focus LOSS_TRANSIENT - pausing")
+                hasAudioFocus = false
+                tts?.stop()
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                Log.d(TAG, "🔉 Audio focus DUCK - continue at lower volume")
+                // Continue playing at lower volume
+            }
+        }
     }
 
     // ========================================
     // PLAYBACK METHODS
     // ========================================
 
-    /**
-     * Kiểm tra TTS đã sẵn sàng chưa
-     */
     fun isReady(): Boolean = isReady
 
-    /**
-     * Thêm text vào hàng đợi để đọc
-     * Thread-safe, có thể gọi từ nhiều thread
-     *
-     * @param text Nội dung cần đọc
-     */
     fun addToQueue(text: String) {
-        if (!isReady || text.isBlank()) {
-            Log.w(TAG, "Cannot add to queue")
+        if (!isReady) {
+            Log.w(TAG, "⚠️ TTS not ready, cannot add to queue")
             return
         }
 
@@ -280,9 +370,6 @@ object NewsPlayer : TextToSpeech.OnInitListener {
         _queueSize.value = queue.size
         Log.d(TAG, "➕ Thêm vào queue: '${text.take(50)}...' (Queue size: ${queue.size})")
 
-        // CompareAndSet: Chỉ 1 thread được quyền gọi speakNext()
-        // Thread thắng sẽ set isSpeaking = true và được đọc
-        // Thread thua sẽ thấy isSpeaking = true và thoát
         if (isSpeaking.compareAndSet(false, true)) {
             _currentlySpeaking.value = true
             Log.d(TAG, "🎤 Thread này được quyền đọc tin đầu tiên")
@@ -292,16 +379,20 @@ object NewsPlayer : TextToSpeech.OnInitListener {
         }
     }
 
-    /**
-     * Đọc tin tiếp theo trong queue
-     * QUAN TRỌNG: Chỉ gọi trong UtteranceProgressListener hoặc sau compareAndSet
-     */
     private fun speakNext() {
         val nextText = queue.poll()
 
         if (nextText != null) {
             _queueSize.value = queue.size
-            Log.d(TAG, "🔢 Đọc tin: '${nextText.take(50)}...' (Còn ${queue.size} tin trong queue)")
+            Log.d(TAG, "📢 Đọc tin: '${nextText.take(50)}...' (Còn ${queue.size} tin trong queue)")
+
+            // ✅ Request audio focus BEFORE speaking
+            if (!requestAudioFocus()) {
+                Log.e(TAG, "❌ Failed to get audio focus, cannot speak")
+                isSpeaking.set(false)
+                _currentlySpeaking.value = false
+                return
+            }
 
             val params = android.os.Bundle()
             params.putString(
@@ -309,25 +400,30 @@ object NewsPlayer : TextToSpeech.OnInitListener {
                 "NEWS_${System.currentTimeMillis()}"
             )
 
+            // ✅ Set audio stream for Android Auto
+            params.putInt(
+                TextToSpeech.Engine.KEY_PARAM_STREAM,
+                AudioManager.STREAM_MUSIC
+            )
+
             try {
-                // QUEUE_FLUSH: Xóa hàng đợi TTS cũ (vì ta tự quản lý queue)
                 tts?.speak(nextText, TextToSpeech.QUEUE_FLUSH, params, "NEWS_ID")
+                Log.d(TAG, "🔊 TTS speak() called with audio focus")
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Exception khi gọi speak()", e)
                 isSpeaking.set(false)
                 _currentlySpeaking.value = false
+                abandonAudioFocus()
             }
         } else {
             Log.d(TAG, "🔇 Hàng đợi rỗng, dừng phát")
             isSpeaking.set(false)
             _currentlySpeaking.value = false
             _queueSize.value = 0
+            abandonAudioFocus()  // ✅ Release audio focus when done
         }
     }
 
-    /**
-     * Dừng phát và xóa hàng đợi
-     */
     fun stop() {
         val queueSize = queue.size
         queue.clear()
@@ -342,12 +438,9 @@ object NewsPlayer : TextToSpeech.OnInitListener {
 
         isSpeaking.set(false)
         _currentlySpeaking.value = false
+        abandonAudioFocus()  // ✅ Release audio focus
     }
 
-    /**
-     * Shutdown TTS hoàn toàn
-     * CHỈ gọi khi activeUsers = 0
-     */
     private fun shutdown() {
         synchronized(usersLock) {
             Log.w(TAG, "🛑 Shutdown TTS...")
@@ -356,6 +449,9 @@ object NewsPlayer : TextToSpeech.OnInitListener {
                 stop()
                 tts?.shutdown()
                 tts = null
+                audioManager = null
+                audioFocusRequest = null
+                appContext = null
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Lỗi khi shutdown TTS", e)
             }
@@ -363,6 +459,7 @@ object NewsPlayer : TextToSpeech.OnInitListener {
             isReady = false
             isInitializing = false
             activeUsers = 0
+            hasAudioFocus = false
             pendingCallbacks.clear()
 
             _readyState.value = false
@@ -372,23 +469,4 @@ object NewsPlayer : TextToSpeech.OnInitListener {
             Log.i(TAG, "✅ TTS đã shutdown hoàn toàn")
         }
     }
-
-    // ========================================
-    // DEBUG METHODS
-    // ========================================
-
-    /**
-     * Lấy thông tin trạng thái để debug
-     */
-//    fun getStatus(): String {
-//        return """
-//            |TTS Status:
-//            |  - Ready: $isReady
-//            |  - Initializing: $isInitializing
-//            |  - Active Users: $activeUsers
-//            |  - Is Speaking: ${isSpeaking.get()}
-//            |  - Queue Size: ${queue.size}
-//            |  - TTS Instance: ${if (tts != null) "✓" else "✗"}
-//        """.trimMargin()
-//    }
 }
