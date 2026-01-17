@@ -10,6 +10,7 @@
         android:allowBackup="true"
         android:label="NewsSpeech Auto"
         android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.NewsSpeechAuto"
         android:hardwareAccelerated="true"
         android:largeHeap="true"

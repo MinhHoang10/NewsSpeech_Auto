@@ -1,18 +1,20 @@
 package com.newsspeech.auto.presentation.car.components
 
 import androidx.car.app.model.Row
+import androidx.car.app.model.CarIcon
+import androidx.core.graphics.drawable.IconCompat
 import com.newsspeech.auto.domain.model.News
 
 /**
- * Component cho mỗi news item
+ * Component cho moi news item
  */
 object NewsItem {
 
     /**
-     * Build row cho 1 tin tức
+     * Build row cho 1 tin tuc
      *
      * @param news News data
-     * @param isTtsReady TTS có sẵn sàng không
+     * @param isTtsReady TTS co san sang khong
      * @param onClick Callback khi click
      */
     fun build(
@@ -23,6 +25,20 @@ object NewsItem {
         val rowBuilder = Row.Builder()
             .setTitle(news.title)
 
+        // Add image if available
+        if (!news.image.isNullOrEmpty()) {
+            try {
+                rowBuilder.setImage(
+                    CarIcon.Builder(
+                        IconCompat.createWithContentUri(news.image)
+                    ).build(),
+                    Row.IMAGE_TYPE_LARGE
+                )
+            } catch (e: Exception) {
+                // Skip image if failed
+            }
+        }
+
         // Description
         val description = when {
             news.content.isNotEmpty() -> {
@@ -32,7 +48,7 @@ object NewsItem {
                     news.content
                 }
             }
-            else -> "Chạm để nghe chi tiết"
+            else -> "Cham de nghe chi tiet"
         }
         rowBuilder.addText(description)
 
@@ -48,7 +64,7 @@ object NewsItem {
                 onClick(news)
             }
         } else {
-            rowBuilder.addText("⏳ TTS đang khởi tạo...")
+            rowBuilder.addText("⏳ TTS dang khoi tao...")
             rowBuilder.setBrowsable(false)
         }
 
@@ -71,7 +87,7 @@ object NewsItem {
     }
 
     /**
-     * Format timestamp từ ISO format sang readable format
+     * Format timestamp tu ISO format sang readable format
      * VD: "2025-11-18T09:08:34" -> "18/11 09:08"
      */
     private fun formatTimestamp(timestamp: String): String {

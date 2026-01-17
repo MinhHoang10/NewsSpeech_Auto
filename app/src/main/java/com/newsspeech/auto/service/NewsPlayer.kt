@@ -1,5 +1,6 @@
 package com.newsspeech.auto.service
 
+import android.speech.tts.Voice
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
@@ -171,6 +172,7 @@ object NewsPlayer : TextToSpeech.OnInitListener {
                             setPitch(1.0f)       // Normal pitch
                         }
 
+                        logAvailableVoices()
                         isReady = true
                         _readyState.value = true
                         setupUtteranceListener()
@@ -379,6 +381,36 @@ object NewsPlayer : TextToSpeech.OnInitListener {
         }
     }
 
+    fun addToQueue(title: String, content: String) {
+        if (!isReady) {
+            Log.w(TAG, "⚠️ TTS not ready, cannot add to queue")
+            return
+        }
+
+        if (content.isBlank()) {
+            Log.w(TAG, "⚠️ Content rỗng, bỏ qua")
+            return
+        }
+
+        val fullText = buildString {
+            append(title)
+            append(". ")
+            append(content)
+        }
+
+        queue.add(fullText)
+        _queueSize.value = queue.size
+        Log.d(TAG, "➕ Thêm vào queue: '$title' (Queue size: ${queue.size})")
+
+        if (isSpeaking.compareAndSet(false, true)) {
+            _currentlySpeaking.value = true
+            Log.d(TAG, "🎤 Thread này được quyền đọc tin đầu tiên")
+            speakNext()
+        } else {
+            Log.d(TAG, "⏸️ Đang đọc tin khác, tin này sẽ chờ trong queue")
+        }
+    }
+
     private fun speakNext() {
         val nextText = queue.poll()
 
@@ -469,4 +501,209 @@ object NewsPlayer : TextToSpeech.OnInitListener {
             Log.i(TAG, "✅ TTS đã shutdown hoàn toàn")
         }
     }
+
+    /**
+     * Lấy danh sách tất cả giọng đọc tiếng Việt
+     */
+    fun getAvailableVietnameseVoices(): List<Voice> {
+        if (tts == null) {
+            Log.w(TAG, "⚠️ TTS chưa được khởi tạo")
+            return emptyList()
+        }
+
+        val voices = tts?.voices ?: return emptyList()
+
+        return voices.filter { voice ->
+            voice.locale.language == "vi"
+        }.sortedWith(compareByDescending<Voice> { voice ->
+            // Ưu tiên: Chất lượng cao + Offline
+            var score = 0
+
+            when (voice.quality) {
+                Voice.QUALITY_VERY_HIGH -> score += 100
+                Voice.QUALITY_HIGH -> score += 80
+                Voice.QUALITY_NORMAL -> score += 50
+                else -> score += 0
+            }
+
+            // Ưu tiên offline
+            if (!voice.isNetworkConnectionRequired) score += 50
+
+            score
+        }.thenBy { it.name })
+    }
+
+    /**
+     * Lấy giọng đọc hiện tại
+     */
+    fun getCurrentVoice(): Voice? {
+        return tts?.voice
+    }
+
+    /**
+     * Đặt giọng đọc theo tên
+     */
+    fun setVoice(voiceName: String): Boolean {
+        if (tts == null) {
+            Log.w(TAG, "⚠️ TTS chưa được khởi tạo")
+            return false
+        }
+
+        val voice = tts?.voices?.find { it.name == voiceName }
+
+        return if (voice != null) {
+            val result = tts?.setVoice(voice)
+            val success = result == TextToSpeech.SUCCESS
+
+            if (success) {
+                Log.i(TAG, "✅ Đã đổi sang giọng: $voiceName")
+            } else {
+                Log.e(TAG, "❌ Không thể đổi sang giọng: $voiceName")
+            }
+
+            success
+        } else {
+            Log.w(TAG, "⚠️ Không tìm thấy giọng: $voiceName")
+            false
+        }
+    }
+
+    /**
+     * Đặt tốc độ đọc (0.1 - 3.0)
+     * Mặc định: 1.0 (bình thường)
+     */
+    fun setSpeechRate(rate: Float): Boolean {
+        if (tts == null) {
+            Log.w(TAG, "⚠️ TTS chưa được khởi tạo")
+            return false
+        }
+
+        // Giới hạn tốc độ trong khoảng hợp lý
+        val validRate = rate.coerceIn(0.1f, 3.0f)
+
+        val result = tts?.setSpeechRate(validRate)
+        val success = result == TextToSpeech.SUCCESS
+
+        if (success) {
+            Log.i(TAG, "✅ Đã đặt tốc độ đọc: ${validRate}x")
+        } else {
+            Log.e(TAG, "❌ Không thể đặt tốc độ đọc")
+        }
+
+        return success
+    }
+
+    /**
+     * Đặt cao độ giọng nói (0.1 - 2.0)
+     * Mặc định: 1.0 (bình thường)
+     */
+    fun setPitch(pitch: Float): Boolean {
+        if (tts == null) {
+            Log.w(TAG, "⚠️ TTS chưa được khởi tạo")
+            return false
+        }
+
+        // Giới hạn pitch trong khoảng hợp lý
+        val validPitch = pitch.coerceIn(0.1f, 2.0f)
+
+        val result = tts?.setPitch(validPitch)
+        val success = result == TextToSpeech.SUCCESS
+
+        if (success) {
+            Log.i(TAG, "✅ Đã đặt cao độ: $validPitch")
+        } else {
+            Log.e(TAG, "❌ Không thể đặt cao độ")
+        }
+
+        return success
+    }
+
+    /**
+     * Kiểm tra và log tất cả giọng đọc có sẵn
+     * Gọi hàm này trong onInit() để xem có bao nhiêu giọng
+     */
+    fun logAvailableVoices() {
+        if (tts == null) {
+            Log.w(TAG, "⚠️ TTS chưa được khởi tạo")
+            return
+        }
+
+        Log.d(TAG, "=== KIỂM TRA GIỌNG ĐỌC TTS ===")
+
+        val allVoices = tts?.voices
+
+        if (allVoices.isNullOrEmpty()) {
+            Log.w(TAG, "❌ Không tìm thấy giọng đọc nào")
+            return
+        }
+
+        Log.d(TAG, "📊 Tổng số giọng: ${allVoices.size}")
+
+        // Lọc giọng tiếng Việt
+        val vietnameseVoices = allVoices.filter { it.locale.language == "vi" }
+
+        if (vietnameseVoices.isEmpty()) {
+            Log.w(TAG, "❌ Không có giọng đọc tiếng Việt")
+
+            // Log một vài giọng khác để debug
+            Log.d(TAG, "📋 Một số giọng khác:")
+            allVoices.take(5).forEach { voice ->
+                Log.d(TAG, "  - ${voice.name} (${voice.locale})")
+            }
+        } else {
+            Log.d(TAG, "✅ Tìm thấy ${vietnameseVoices.size} giọng tiếng Việt:")
+
+            vietnameseVoices.forEachIndexed { index, voice ->
+                Log.d(TAG, """
+                [$index] ${voice.name}
+                  Locale: ${voice.locale}
+                  Chất lượng: ${getQualityString(voice.quality)}
+                  Độ trễ: ${getLatencyString(voice.latency)}
+                  Yêu cầu mạng: ${voice.isNetworkConnectionRequired}
+                  Features: ${voice.features}
+            """.trimIndent())
+            }
+        }
+
+        // Log giọng hiện tại
+        val currentVoice = tts?.voice
+        if (currentVoice != null) {
+            Log.d(TAG, "\n🎤 GIỌNG ĐANG SỬ DỤNG:")
+            Log.d(TAG, "  Tên: ${currentVoice.name}")
+            Log.d(TAG, "  Locale: ${currentVoice.locale}")
+            Log.d(TAG, "  Chất lượng: ${getQualityString(currentVoice.quality)}")
+        }
+
+        Log.d(TAG, "=====================================")
+    }
+
+    private fun getQualityString(quality: Int): String {
+        return when (quality) {
+            Voice.QUALITY_VERY_HIGH -> "Rất cao"
+            Voice.QUALITY_HIGH -> "Cao"
+            Voice.QUALITY_NORMAL -> "Bình thường"
+            Voice.QUALITY_LOW -> "Thấp"
+            Voice.QUALITY_VERY_LOW -> "Rất thấp"
+            else -> "Không xác định ($quality)"
+        }
+    }
+
+    private fun getLatencyString(latency: Int): String {
+        return when (latency) {
+            Voice.LATENCY_VERY_LOW -> "Rất thấp"
+            Voice.LATENCY_LOW -> "Thấp"
+            Voice.LATENCY_NORMAL -> "Bình thường"
+            Voice.LATENCY_HIGH -> "Cao"
+            Voice.LATENCY_VERY_HIGH -> "Rất cao"
+            else -> "Không xác định ($latency)"
+        }
+    }
+
+    /**
+     * Kiểm tra xem có nhiều giọng đọc tiếng Việt không
+     */
+    fun hasMultipleVietnameseVoices(): Boolean {
+        return getAvailableVietnameseVoices().size > 1
+    }
+
 }

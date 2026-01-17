@@ -6,16 +6,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.newsspeech.auto.domain.model.News
 import com.newsspeech.auto.util.formatTimestamp
 
-/**
- * News item card component
- * Displays a single news item with click to play TTS
- */
 @Composable
 fun NewsItem(
     news: News,
@@ -33,12 +33,29 @@ fun NewsItem(
             } else {
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
             }
-        )
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // 1. HIỂN THỊ ẢNH (Mới thêm)
+            if (!news.image.isNullOrEmpty()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(news.image)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp), // Chiều cao ảnh cố định
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+
             // Category tag
             if (news.category.isNotEmpty()) {
                 CategoryTag(category = news.category)
@@ -52,14 +69,15 @@ fun NewsItem(
                 NewsContent(content = news.content)
             }
 
-            // Metadata (source + timestamp)
-            NewsMetadata(
-                source = news.source,
-                timestamp = news.timestamp
-            )
-
-            // TTS status hint
-            TtsStatusHint(isTtsReady = isTtsReady)
+            // Metadata & TTS Hint
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                NewsMetadata(source = news.source, timestamp = news.timestamp)
+                TtsStatusHint(isTtsReady = isTtsReady)
+            }
         }
     }
 }
