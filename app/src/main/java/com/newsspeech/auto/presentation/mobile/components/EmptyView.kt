@@ -10,9 +10,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
-/**
- * Empty view shown when no news available
- */
 @Composable
 fun EmptyView(
     modifier: Modifier = Modifier
@@ -27,16 +24,16 @@ fun EmptyView(
             modifier = Modifier.padding(24.dp)
         ) {
             Text(
-                text = "🔭",
+                text = "📡",
                 style = MaterialTheme.typography.displayMedium
             )
             Text(
-                text = "Chưa có tin tức",
+                text = "Chưa có dữ liệu",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Vui lòng thêm file all_news.json vào assets",
+                text = "Server chưa có tin tức nào.\nHãy chạy 'crawl_now' trên Server hoặc kiểm tra kết nối mạng.",
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant

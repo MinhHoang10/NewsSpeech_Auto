@@ -7,5 +7,6 @@ data class News(
     val link: String = "",
     val timestamp: String = "",
     val source: String = "",
-    val category: String = ""
+    val category: String = "",
+    val image: String? = null
 )

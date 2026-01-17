@@ -15,9 +15,9 @@ import kotlinx.coroutines.launch
 /**
  * ViewModel cho Car UI
  *
- * ✅ Quản lý state và business logic
- * ✅ Observe TTS state
- * ✅ Load news data
+ * - Quan ly state va business logic
+ * - Observe TTS state
+ * - Load news data
  */
 class CarNewsViewModel(context: Context) : ViewModel() {
 
@@ -34,48 +34,48 @@ class CarNewsViewModel(context: Context) : ViewModel() {
     val ttsState: StateFlow<TtsState> = _ttsState.asStateFlow()
 
     init {
-        Log.d(TAG, "🎬 CarNewsViewModel initialized")
+        Log.d(TAG, "CarNewsViewModel initialized")
         observeTtsState()
         loadNews()
     }
 
     /**
-     * Observe TTS state từ NewsPlayer
+     * Observe TTS state tu NewsPlayer
      */
     private fun observeTtsState() {
         viewModelScope.launch {
             NewsPlayer.readyState.collect { ready ->
                 _ttsState.value = _ttsState.value.copy(isReady = ready)
-                Log.d(TAG, "🎤 TTS ready: $ready")
+                Log.d(TAG, "TTS ready: $ready")
             }
         }
 
         viewModelScope.launch {
             NewsPlayer.currentlySpeaking.collect { speaking ->
                 _ttsState.value = _ttsState.value.copy(isSpeaking = speaking)
-                Log.d(TAG, "🔊 TTS speaking: $speaking")
+                Log.d(TAG, "TTS speaking: $speaking")
             }
         }
 
         viewModelScope.launch {
             NewsPlayer.queueSize.collect { size ->
                 _ttsState.value = _ttsState.value.copy(queueSize = size)
-                Log.d(TAG, "📋 Queue size: $size")
+                Log.d(TAG, "Queue size: $size")
             }
         }
     }
 
     /**
-     * Load news data từ repository
+     * Load news data tu repository
      */
     private fun loadNews() {
         viewModelScope.launch {
             try {
-                Log.d(TAG, "📥 Loading news...")
+                Log.d(TAG, "Loading news...")
                 _uiState.value = CarUiState.Loading
 
-                // Initialize repository nếu chưa
-//                newsRepository.initialize()
+                // Initialize repository neu chua
+                // newsRepository.initialize()
 
                 // Load news grouped by category
                 val newsMap = newsRepository.getNewsGroupedByCategory()
@@ -83,33 +83,33 @@ class CarNewsViewModel(context: Context) : ViewModel() {
 
                 if (allNews.isEmpty()) {
                     _uiState.value = CarUiState.Empty
-                    Log.w(TAG, "⚠️ No news found")
+                    Log.w(TAG, "No news found")
                 } else {
                     _uiState.value = CarUiState.Success(
                         newsMap = newsMap,
                         allNews = allNews
                     )
-                    Log.i(TAG, "✅ Loaded ${allNews.size} news in ${newsMap.size} categories")
+                    Log.i(TAG, "Loaded ${allNews.size} news in ${newsMap.size} categories")
                 }
 
             } catch (e: Exception) {
                 _uiState.value = CarUiState.Error(e.message ?: "Unknown error")
-                Log.e(TAG, "❌ Error loading news", e)
+                Log.e(TAG, "Error loading news", e)
             }
         }
     }
 
     /**
-     * Play news với TTS
+     * Play news voi TTS
      */
     fun playNews(news: News) {
         if (!_ttsState.value.isReady) {
-            Log.w(TAG, "⚠️ TTS not ready")
+            Log.w(TAG, "TTS not ready")
             return
         }
 
         val contentToRead = buildString {
-            append("Tin từ ")
+            append("Tin tu ")
             if (news.source.isNotEmpty()) {
                 append(news.source)
                 append(". ")
@@ -124,15 +124,23 @@ class CarNewsViewModel(context: Context) : ViewModel() {
         }
 
         NewsPlayer.addToQueue(contentToRead)
-        Log.i(TAG, "✅ Added news to queue: ${news.title}")
+        Log.i(TAG, "Added news to queue: ${news.title}")
+    }
+
+    /**
+     * Pause TTS
+     */
+    fun pauseTts() {
+        NewsPlayer.stop()
+        Log.d(TAG, "TTS paused")
     }
 
     /**
      * Test TTS
      */
     fun testTts() {
-        NewsPlayer.addToQueue("Đây là test TTS trên Android Auto")
-        Log.d(TAG, "🔊 Test TTS triggered")
+        NewsPlayer.addToQueue("Day la test TTS tren Android Auto")
+        Log.d(TAG, "Test TTS triggered")
     }
 
     /**
@@ -140,41 +148,19 @@ class CarNewsViewModel(context: Context) : ViewModel() {
      */
     fun stopTts() {
         NewsPlayer.stop()
-        Log.d(TAG, "⏹️ TTS stopped")
+        Log.d(TAG, "TTS stopped")
     }
 
     /**
      * Refresh news
      */
     fun refresh() {
-        Log.d(TAG, "🔄 Refreshing news...")
+        Log.d(TAG, "Refreshing news...")
         loadNews()
     }
 
     override fun onCleared() {
         super.onCleared()
-        Log.d(TAG, "🧹 CarNewsViewModel cleared")
+        Log.d(TAG, "CarNewsViewModel cleared")
     }
 }
-
-/**
- * UI State cho Car Screen
- */
-sealed class CarUiState {
-    object Loading : CarUiState()
-    object Empty : CarUiState()
-    data class Success(
-        val newsMap: Map<String, List<News>>,
-        val allNews: List<News>
-    ) : CarUiState()
-    data class Error(val message: String) : CarUiState()
-}
-
-/**
- * TTS State
- */
-data class TtsState(
-    val isReady: Boolean = false,
-    val isSpeaking: Boolean = false,
-    val queueSize: Int = 0
-)

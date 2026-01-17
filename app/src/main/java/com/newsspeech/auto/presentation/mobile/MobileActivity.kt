@@ -9,8 +9,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.lifecycle.Observer
 import androidx.lifecycle.lifecycleScope
-import com.newsspeech.auto.presentation.mobile.screens.CarConnectedScreen
-import com.newsspeech.auto.presentation.mobile.screens.NewsListScreen
+import com.newsspeech.auto.domain.model.News
+import com.newsspeech.auto.presentation.mobile.screens.*
 import com.newsspeech.auto.service.NewsPlayer
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +24,7 @@ import kotlinx.coroutines.withContext
  * - TTS lifecycle management
  * - CarConnection setup
  * - Screen routing (Mobile vs Car mode)
+ * - Navigation management
  */
 @AndroidEntryPoint
 class MobileActivity : ComponentActivity() {
@@ -113,6 +114,107 @@ private fun MobileApp(carConnection: CarConnection) {
     if (connectionType == CarConnection.CONNECTION_TYPE_PROJECTION) {
         CarConnectedScreen()
     } else {
-        NewsListScreen()
+        NavigationContainer()
     }
+}
+
+/**
+ * Navigation container - quản lý điều hướng giữa các màn hình
+ */
+@Composable
+private fun NavigationContainer() {
+    // State để quản lý navigation
+    var currentScreen by remember { mutableStateOf<Screen>(Screen.MainCategory) }
+    var newsList by remember { mutableStateOf<List<News>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(false) }
+    var selectedFilter by remember { mutableStateOf<NewsFilter?>(null) }
+
+    // Load dữ liệu ban đầu cho MainCategoryScreen
+    LaunchedEffect(Unit) {
+        if (newsList.isEmpty()) {
+            currentScreen = Screen.TempLoadData
+        }
+    }
+
+    when (val screen = currentScreen) {
+        is Screen.MainCategory -> {
+            // ĐÂY LÀ MÀN HÌNH CHÍNH - Hiển thị cả Nguồn và Chủ đề
+            MainCategoryScreen(
+                newsList = newsList,
+                isLoading = isLoading,
+                onRefresh = {
+                    isLoading = true
+                    currentScreen = Screen.TempLoadData
+                },
+                onSourceClick = { source ->
+                    selectedFilter = NewsFilter.BySource(source)
+                    currentScreen = Screen.NewsList
+                },
+                onTopicClick = { topic ->
+                    selectedFilter = NewsFilter.ByTopic(topic)
+                    currentScreen = Screen.NewsList
+                },
+                onSettingsClick = {
+                    currentScreen = Screen.Settings
+                }
+            )
+        }
+
+        is Screen.NewsList -> {
+            // Màn hình danh sách tin đã lọc
+            NewsListScreen(
+                filter = selectedFilter,
+                onBack = {
+                    currentScreen = Screen.MainCategory
+                },
+                onNewsListLoaded = { loadedNews ->
+                    // Lưu danh sách tin để dùng cho màn hình chính
+                    if (newsList.isEmpty() || newsList != loadedNews) {
+                        newsList = loadedNews
+                        isLoading = false
+                    }
+                }
+            )
+        }
+
+        is Screen.TempLoadData -> {
+            // Màn hình tạm để load data ban đầu
+            NewsListScreen(
+                filter = null,
+                onBack = null,
+                onNewsListLoaded = { loadedNews ->
+                    newsList = loadedNews
+                    isLoading = false
+                    currentScreen = Screen.MainCategory
+                }
+            )
+        }
+
+        is Screen.Settings -> {
+            // Màn hình cài đặt
+            SettingsScreen(
+                onBack = {
+                    currentScreen = Screen.MainCategory
+                }
+            )
+        }
+    }
+}
+
+/**
+ * Sealed class để định nghĩa các màn hình
+ */
+private sealed class Screen {
+    object MainCategory : Screen()
+    object NewsList : Screen()
+    object TempLoadData : Screen()
+    object Settings : Screen()
+}
+
+/**
+ * Filter để lọc tin tức
+ */
+sealed class NewsFilter {
+    data class BySource(val source: String) : NewsFilter()
+    data class ByTopic(val topic: String) : NewsFilter()
 }

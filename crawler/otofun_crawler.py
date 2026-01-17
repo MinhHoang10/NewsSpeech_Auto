@@ -4,112 +4,125 @@ import time
 import re
 from datetime import datetime
 from selenium import webdriver
-from selenium.webdriver.common.by import By
+from selenium.webdriver.common.by import By 
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
-from bs4 import BeautifulSoup  # Vẫn dùng để parse sau khi Selenium lấy HTML
+from bs4 import BeautifulSoup
 
 def setup_driver(headless=True):
-    """Setup Chrome driver với options chống detect bot."""
     options = Options()
-    if headless:
-        options.add_argument('--headless')
+    if headless: options.add_argument('--headless')
     options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-blink-features=AutomationControlled')
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option('useAutomationExtension', False)
     options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-
     service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    return driver
+    return webdriver.Chrome(service=service, options=options)
 
-def crawl_otofun(limit=3, headless=True):
+def crawl_otofun(category='oto-xe-may', limit=20, headless=True):
+    category_map = {
+        'oto-xe-may': 'https://www.otofun.net/forums/oto-xe-may.2/',
+        'kinh-doanh': 'https://www.otofun.net/forums/tttm-xe-co.292/',
+        'bat-dong-san': 'https://www.otofun.net/forums/bat-dong-san.77/',
+        'doi-song': 'https://www.otofun.net/forums/cafe-otofun.16/',
+        'giai-tri': 'https://www.otofun.net/forums/cafe-otofun.16/',
+        'the-thao': 'https://www.otofun.net/forums/van-hoa-the-thao.163/',
+        'du-lich': 'https://www.otofun.net/forums/cac-chuyen-di.24/'
+    }
+
+    url = category_map.get(category, category_map['doi-song'])
+    print(f"[Otofun] Bắt đầu crawl '{category}'...")
+
     driver = setup_driver(headless)
-    url = "https://www.otofun.net/forums/oto-xe-may.2/"
-
     news_list = []
+    
     try:
         driver.get(url)
-        time.sleep(3)  # Đợi JS load
+        time.sleep(3)
 
-        # Lấy HTML sau khi render
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
+        while len(news_list) < limit:
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
+            threads = soup.find_all('div', class_='structItem-title')
+            
+            if not threads: break
 
-        # Tìm threads: ưu tiên structItem-title, fallback js-threadListItem hoặc a[href*='/threads/']
-        threads = (
-                soup.find_all('div', class_='structItem-title') or
-                soup.find_all('a', href=re.compile(r'/threads/'))[:limit * 2] or
-                soup.find_all('h3', class_=lambda x: x and 'title' in x.lower())[:limit * 2]
-        )
+            for item in threads:
+                if len(news_list) >= limit: break
 
-        threads = threads[:limit * 2]  # Lấy dư để lọc
+                a_tag = item.find('a', href=re.compile(r'/threads/'))
+                if not a_tag: continue
+                
+                title = a_tag.get_text(strip=True)
+                link = "https://www.otofun.net" + a_tag['href']
+                
+                if any(n['link'] == link for n in news_list): continue
+                article_id = re.search(r'\.(\d+)/?$', link).group(1) if re.search(r'\.(\d+)/?$', link) else str(hash(link))[-8:]
 
-        for item in threads:
-            if len(news_list) >= limit:
-                break
+                # --- VÀO CHI TIẾT ---
+                content = ""
+                img_url = None
+                try:
+                    driver.execute_script("window.open('');")
+                    driver.switch_to.window(driver.window_handles[-1])
+                    driver.get(link)
+                    time.sleep(2) # Tăng thời gian chờ lên chút để chắc chắn load hết text
 
-            # Tìm link/title
-            a_tag = item.find('a') if item.name != 'a' else item
-            if not a_tag or not a_tag.get('href'):
-                continue
+                    detail_soup = BeautifulSoup(driver.page_source, 'html.parser')
+                    first_post = detail_soup.find('article', class_='message--post')
+                    
+                    if first_post:
+                        body = first_post.find('div', class_='bbWrapper')
+                        if body:
+                            # Lấy ảnh
+                            img_tag = body.find('img', class_='bbImage') or body.find('img')
+                            if img_tag and img_tag.get('src'):
+                                img_url = img_tag['src']
+                                if not img_url.startswith('http'): img_url = "https://www.otofun.net" + img_url
+                            
+                            # --- SỬA Ở ĐÂY: LẤY TOÀN BỘ TEXT ---
+                            # separator='\n' giúp giữ xuống dòng, dễ đọc hơn
+                            # Bỏ đoạn [:400] đi
+                            content = body.get_text(separator='\n', strip=True)
+                    
+                    if not content: content = "Xem chi tiết tại diễn đàn."
+                    
+                    driver.close()
+                    driver.switch_to.window(driver.window_handles[0])
 
-            title = a_tag.get_text(strip=True)
-            link = a_tag['href']
-            if link.startswith('/'):
-                link = 'https://www.otofun.net' + link
-            elif not link.startswith('http'):
-                continue
+                except Exception as e:
+                    print(f"   [Lỗi bài] {str(e)[:50]}")
+                    try: 
+                        if len(driver.window_handles) > 1:
+                            driver.close()
+                            driver.switch_to.window(driver.window_handles[0])
+                    except: pass
+                    content = "Lỗi tải nội dung."
 
-            # Extract ID an toàn từ URL
-            match = re.search(r'/threads/[^/]+-(\d+)\.html?$', link)
-            article_id = match.group(1) if match else str(hash(link))[-8:]
+                news_list.append({
+                    "id": article_id,
+                    "title": title,
+                    "content": content, # <-- Full text
+                    "image": img_url,
+                    "link": link,
+                    "timestamp": datetime.now().isoformat(),
+                    "source": "Otofun",
+                    "category": category
+                })
+                print(f"      + [Otofun] Đã lấy: {title[:20]}... ({len(content)} chars)")
 
-            # Lấy nội dung chi tiết (dùng Selenium để tránh block)
-            content = ""
+            if len(news_list) >= limit: break
+            
             try:
-                driver.get(link)
-                time.sleep(2)
-                detail_soup = BeautifulSoup(driver.page_source, 'html.parser')
-
-                # Tìm first post: bbWrapper chuẩn XenForo, fallback
-                first_post = (
-                        detail_soup.find('div', class_='bbWrapper') or
-                        detail_soup.find('article', class_=lambda x: x and 'message-body' in x) or
-                        detail_soup.find('div', string=re.compile(r'post:', re.I))
-                )
-                if first_post:
-                    content = first_post.get_text(strip=True)[:300] + "..."
-                else:
-                    content = "Xem chi tiết tại Otofun."
-            except Exception as e:
-                content = f"Lỗi tải nội dung: {str(e)[:50]}"
-
-            news_list.append({
-                "id": article_id,
-                "title": title,
-                "content": content,
-                "link": link,
-                "timestamp": datetime.now().isoformat(),
-                "source": "Otofun",
-                "category": "oto-xe-may"  # Thêm category từ forum
-            })
-
-            time.sleep(1 + (hash(title) % 3))  # Random delay 1-4s
+                next_btn = driver.find_element(By.CSS_SELECTOR, 'a.pageNav-jump--next')
+                if next_btn:
+                    next_btn.click()
+                    time.sleep(3)
+                else: break
+            except: break
 
     except Exception as e:
-        print(f"Lỗi crawl Otofun: {e}")
-        return []
+        print(f"[Otofun] Lỗi Critical: {e}")
     finally:
         driver.quit()
 
     return news_list
-
-
-# === TEST ===
-if __name__ == "__main__":
-    data = crawl_otofun(limit=3, headless=False)  # headless=False để debug
-    print(json.dumps(data, ensure_ascii=False, indent=2))
