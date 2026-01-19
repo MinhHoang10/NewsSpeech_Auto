@@ -20,11 +20,10 @@ import com.newsspeech.auto.presentation.mobile.components.*
 import com.newsspeech.auto.service.NewsPlayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * Main news list screen for mobile
- * Fetches news from API and displays with TTS playback
+ * ✅ REALTIME: Tin tức xuất hiện dần khi crawl
  * Supports filtering by source or category
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,15 +37,64 @@ fun NewsListScreen(
     val context = LocalContext.current
     val newsRepo = remember { NewsRepository(context) }
 
-    // News data state
+    // 🔥 REALTIME: Dùng Flow để nhận update liên tục từ database
     var allNewsList by remember { mutableStateOf<List<News>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isInitialLoad by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     // TTS state
     val isTtsReady by NewsPlayer.readyState.collectAsState()
     val queueSize by NewsPlayer.queueSize.collectAsState()
     val isSpeaking by NewsPlayer.currentlySpeaking.collectAsState()
+
+    // 🔥 REALTIME: Lắng nghe database updates
+    LaunchedEffect(Unit) {
+        try {
+            newsRepo.getNewsFlow().collect { newsList ->
+                Log.d("NewsListScreen", "📡 Received ${newsList.size} news from database")
+
+                if (newsList.isNotEmpty()) {
+                    allNewsList = newsList
+                    isInitialLoad = false
+                    errorMessage = null
+                    onNewsListLoaded?.invoke(newsList)
+                } else if (!isInitialLoad) {
+                    // Database bị clear, load từ JSON
+                    Log.w("NewsListScreen", "⚠️ Database empty, loading from JSON...")
+                    val jsonNews = newsRepo.loadNewsFromAssets()
+                    if (jsonNews.isNotEmpty()) {
+                        allNewsList = jsonNews
+                        onNewsListLoaded?.invoke(jsonNews)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("NewsListScreen", "❌ Error observing news flow", e)
+            errorMessage = "Lỗi: ${e.localizedMessage ?: e.message}"
+            isInitialLoad = false
+        }
+    }
+
+    // Initial load from JSON if database empty
+    LaunchedEffect(Unit) {
+        scope.launch {
+            try {
+                val count = newsRepo.getNewsCount()
+                if (count == 0) {
+                    Log.d("NewsListScreen", "📂 Database empty, loading from JSON...")
+                    val jsonNews = newsRepo.loadNewsFromAssets()
+                    if (jsonNews.isNotEmpty()) {
+                        allNewsList = jsonNews
+                        onNewsListLoaded?.invoke(jsonNews)
+                    }
+                }
+                isInitialLoad = false
+            } catch (e: Exception) {
+                Log.e("NewsListScreen", "❌ Error initial load", e)
+                isInitialLoad = false
+            }
+        }
+    }
 
     // Lọc danh sách tin tức dựa trên filter
     val filteredNewsList = remember(allNewsList, filter) {
@@ -61,41 +109,21 @@ fun NewsListScreen(
         }
     }
 
-    // Load news function
-    val loadNews: () -> Unit = {
+    // Manual refresh function
+    val onRefresh: () -> Unit = {
         scope.launch {
-            isLoading = true
-            errorMessage = null
-
-            Log.d("NewsListScreen", "📂 Loading news from JSON...")
-
             try {
-                val fetchedNews = withContext(Dispatchers.IO) {
-                    newsRepo.loadNewsFromAssets()
-                }
-
-                Log.d("NewsListScreen", "📦 Loaded ${fetchedNews.size} news items")
-
-                if (fetchedNews.isNotEmpty()) {
-                    allNewsList = fetchedNews
-                    onNewsListLoaded?.invoke(fetchedNews)
-                    Log.d("NewsListScreen", "✅ News list updated")
-                } else {
-                    errorMessage = "Không tìm thấy file all_news.json trong assets"
-                    Log.w("NewsListScreen", "⚠️ Empty news list")
+                Log.d("NewsListScreen", "🔄 Manual refresh...")
+                val freshNews = newsRepo.loadNews()
+                if (freshNews.isNotEmpty()) {
+                    allNewsList = freshNews
+                    onNewsListLoaded?.invoke(freshNews)
                 }
             } catch (e: Exception) {
-                Log.e("NewsListScreen", "❌ Error loading news", e)
-                errorMessage = "Lỗi: ${e.localizedMessage ?: e.message}"
-            } finally {
-                isLoading = false
+                Log.e("NewsListScreen", "❌ Error refreshing", e)
+                errorMessage = "Lỗi refresh: ${e.localizedMessage}"
             }
         }
-    }
-
-    // Auto-load on first composition
-    LaunchedEffect(Unit) {
-        loadNews()
     }
 
     // Handle news click
@@ -104,9 +132,7 @@ fun NewsListScreen(
             scope.launch(Dispatchers.Default) {
                 val title = news.title
                 val content = buildNewsContent(news)
-
                 Log.d("NewsListScreen", "🔊 Adding to TTS queue: $title")
-
                 NewsPlayer.addToQueue(title, content)
             }
         } else {
@@ -158,25 +184,17 @@ fun NewsListScreen(
                 ),
                 actions = {
                     // Refresh button
-                    IconButton(
-                        onClick = { loadNews() },
-                        enabled = !isLoading
-                    ) {
+                    IconButton(onClick = onRefresh) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "Refresh",
-                            tint = if (isLoading) {
-                                MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.5f)
-                            } else {
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                            }
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
                 }
             )
         },
         bottomBar = {
-            // Always show control bar for better UX
             TtsControlBar(
                 isTtsReady = isTtsReady,
                 isSpeaking = isSpeaking,
@@ -191,7 +209,7 @@ fun NewsListScreen(
                 .padding(paddingValues)
         ) {
             when {
-                isLoading -> LoadingView()
+                isInitialLoad -> LoadingView()
                 errorMessage != null -> ErrorView(errorMessage!!)
                 filteredNewsList.isEmpty() -> EmptyView()
                 else -> NewsListContent(

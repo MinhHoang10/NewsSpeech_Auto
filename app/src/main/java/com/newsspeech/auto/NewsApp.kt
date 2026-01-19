@@ -2,70 +2,98 @@ package com.newsspeech.auto
 
 import android.app.Application
 import android.util.Log
+import androidx.work.*
+import com.newsspeech.auto.worker.NewsCrawlerWorker
 import dagger.hilt.android.HiltAndroidApp
+import java.util.concurrent.TimeUnit
 
 /**
  * Application class - Entry point của toàn bộ app
  *
  * ✅ Khởi tạo Hilt dependency injection
- * ✅ Pre-warm Compose để giảm cold start lag
- * ✅ Chạy TRƯỚC mọi Activity/Service
- * ✅ Tối ưu để không block main thread
+ * ✅ Chạy crawler ngay khi app start
+ * ✅ Setup crawler định kỳ mỗi 60 phút
  */
 @HiltAndroidApp
 class NewsApp : Application() {
 
     companion object {
         private const val TAG = "NewsApp"
+        private const val WORK_NAME = "news_crawler_periodic"
     }
 
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "🚀 NewsApp onCreate() - App starting...")
 
-        // ✅ Pre-warm Compose runtime trên background thread
-        // KHÔNG log ở đây vì thread chưa chạy xong
-//        Thread {
-//            preWarmCompose()
-//        }.start()
+        // ✅ Setup crawl định kỳ
+        setupPeriodicCrawl()
+
+        // ✅ Crawl ngay lập tức khi app khởi động
+        runImmediateCrawl()
 
         Log.d(TAG, "✅ NewsApp initialized successfully")
     }
 
     /**
-     * Pre-load Compose classes vào memory
-     * Không bắt buộc nhưng giúp UI mượt hơn
-     * ✅ Chạy trên background thread để không block onCreate()
+     * Thiết lập crawl định kỳ mỗi 60 phút
+     * Chỉ chạy khi có mạng và pin > 15%
      */
-//    private fun preWarmCompose() {
-//        try {
-//            // Trigger class loading của các component Compose chính
-//            Class.forName("androidx.compose.runtime.Composer")
-//            Class.forName("androidx.compose.ui.platform.AndroidComposeView")
-//            Class.forName("androidx.compose.material3.ButtonKt")
-//            Class.forName("androidx.compose.foundation.layout.ColumnKt")
-//            Class.forName("androidx.compose.foundation.layout.RowKt")
-//
-//            Log.d(TAG, "✅ Compose pre-warmed")
-//        } catch (e: ClassNotFoundException) {
-//            Log.w(TAG, "⚠️ Could not pre-warm Compose (not critical): ${e.message}")
-//        } catch (e: Exception) {
-//            Log.w(TAG, "⚠️ Error pre-warming Compose: ${e.message}")
-//        }
-//    }
-//
-//    override fun onTerminate() {
-//        Log.d(TAG, "🛑 NewsApp onTerminate() - App shutting down")
-//        super.onTerminate()
-//    }
-//
-//    override fun onLowMemory() {
-//        super.onLowMemory()
-//        Log.w(TAG, "⚠️ onLowMemory() - System is running low on memory")
-//    }
-//
-//    override fun onTrimMemory(level: Int) {
-//        super.onTrimMemory(level)
-//        Log.w(TAG, "⚠️ onTrimMemory(level=$level) - System requesting memory cleanup")
-//    }
+    private fun setupPeriodicCrawl() {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)  // Yêu cầu có mạng
+            .setRequiresBatteryNotLow(true)  // Chỉ chạy khi pin > 15%
+            .build()
+
+        val periodicWork = PeriodicWorkRequestBuilder<NewsCrawlerWorker>(
+            60, TimeUnit.MINUTES  // ✅ Mỗi 60 phút
+        )
+            .setConstraints(constraints)
+            .setBackoffCriteria(
+                BackoffPolicy.LINEAR,
+                15, TimeUnit.MINUTES  // Nếu lỗi, thử lại sau 15 phút
+            )
+            .addTag("news_crawler")
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,  // Giữ nguyên nếu đã có
+            periodicWork
+        )
+
+        Log.i(TAG, "✅ Đã thiết lập crawl định kỳ mỗi 60 phút")
+    }
+
+    /**
+     * Crawl ngay lập tức khi app khởi động
+     * Chạy background, không block onCreate()
+     */
+    fun runImmediateCrawl() {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val immediateWork = OneTimeWorkRequestBuilder<NewsCrawlerWorker>()
+            .setConstraints(constraints)
+            .addTag("news_crawler_immediate")
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniqueWork(
+            "news_crawler_immediate",
+            ExistingWorkPolicy.REPLACE,  // Thay thế nếu đang chạy
+            immediateWork
+        )
+
+        Log.i(TAG, "🚀 Đã khởi chạy crawl ngay lập tức")
+    }
+
+    /**
+     * Hủy tất cả crawl jobs (dùng khi cần)
+     */
+    fun cancelAllCrawls() {
+        WorkManager.getInstance(this).cancelUniqueWork(WORK_NAME)
+        WorkManager.getInstance(this).cancelAllWorkByTag("news_crawler")
+        Log.i(TAG, "⏹️ Đã hủy tất cả crawl jobs")
+    }
 }

@@ -93,9 +93,20 @@ dependencies {
     // Gson
     implementation("com.google.code.gson:gson:2.10.1")
 
+    // Jsoup - Web scraping
+    implementation("org.jsoup:jsoup:1.17.2")
+
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.0")
+
+    // Room Database
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    kapt("androidx.room:room-compiler:2.6.1")
+
+    // ✅ WorkManager - Để crawl định kỳ
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     // Retrofit để gọi API
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
