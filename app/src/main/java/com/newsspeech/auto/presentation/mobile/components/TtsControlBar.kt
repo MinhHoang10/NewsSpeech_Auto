@@ -7,6 +7,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.newsspeech.auto.service.NewsPlayer
+
+//import com.newsspeech.auto.service.NewsPlayer.queue
 
 /**
  * TTS control bar shown at bottom of screen
@@ -18,6 +21,7 @@ fun TtsControlBar(
     isSpeaking: Boolean,
     queueSize: Int,
     onStop: () -> Unit,
+    skipNext: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -42,6 +46,11 @@ fun TtsControlBar(
             // Stop button
             if (isSpeaking || queueSize > 0) {
                 StopButton(onClick = onStop)
+            }
+
+            // Next button
+            if (isSpeaking || queueSize > 0) {
+                NextButton(onClick = skipNext)
             }
         }
     }
@@ -68,6 +77,22 @@ private fun TtsStatus(
             fontWeight = FontWeight.Bold
         )
 
+//        LazyColumn(
+//            contentPadding = PaddingValues(16.dp),
+//            verticalArrangement = Arrangement.spacedBy(12.dp)
+//        )
+//
+//            fun getQueueItems(): List<String> {
+//                return queue.toList()
+//            }
+//
+//            {
+//            items(
+//                items = queue.toList()
+//            )
+//            }
+//        }
+
         // Progress indicator when speaking
         if (isSpeaking || queueSize > 0) {
             LinearProgressIndicator(
@@ -86,5 +111,18 @@ private fun StopButton(onClick: () -> Unit) {
         )
     ) {
         Text("⏹️ Dừng")
+    }
+}
+
+@Composable
+private fun NextButton(onClick: () -> Unit) {
+
+    Button(
+        onClick = onClick ,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primary
+        )
+    ){
+        Text("Next")
     }
 }

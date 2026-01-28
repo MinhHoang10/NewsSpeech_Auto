@@ -45,7 +45,7 @@ object NewsDetailScreen {
                 .build()
         )
 
-        // 3. Progress row (like "0:34 / 3:20")
+        // 3. Progress row
         paneBuilder.addRow(
             Row.Builder()
                 .setTitle(buildProgressText(currentIndex, totalNews, ttsState))
@@ -56,7 +56,7 @@ object NewsDetailScreen {
         if (currentIndex > 1) {
             paneBuilder.addAction(
                 Action.Builder()
-                    .setTitle("⏮ Tin truoc")
+                    .setTitle("◀ Tin truoc")
                     .setOnClickListener(onPrevious)
                     .build()
             )
@@ -66,7 +66,7 @@ object NewsDetailScreen {
         if (currentIndex < totalNews) {
             paneBuilder.addAction(
                 Action.Builder()
-                    .setTitle("⏭ Tin tiep")
+                    .setTitle("▶ Tin tiep")
                     .setOnClickListener(onNext)
                     .build()
             )
@@ -84,9 +84,10 @@ object NewsDetailScreen {
             onStop = onStop
         )
 
+        // ✅ Sử dụng Action.BACK - Android Auto sẽ tự động pop screen
         return PaneTemplate.Builder(paneBuilder.build())
             .setTitle(news.category)
-            .setHeaderAction(Action.BACK)
+            .setHeaderAction(Action.BACK)  // ✅ Standard action
             .setActionStrip(actionStrip)
             .build()
     }

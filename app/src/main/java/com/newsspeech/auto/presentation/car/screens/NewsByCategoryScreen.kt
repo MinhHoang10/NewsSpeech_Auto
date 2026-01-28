@@ -20,18 +20,15 @@ object NewsByCategoryScreen {
      * @param newsList Danh sách tin
      * @param ttsState TTS state
      * @param onNewsClick Callback khi chọn tin
-     * @param onBack Callback quay lại
      */
     fun build(
         category: String,
         newsList: List<News>,
         ttsState: TtsState,
-        onNewsClick: (News) -> Unit,
-        onBack: () -> Unit
+        onNewsClick: (News) -> Unit
     ): Template {
         val itemListBuilder = ItemList.Builder()
 
-        // News items
         newsList.forEach { news ->
             itemListBuilder.addItem(
                 NewsItem.build(
@@ -42,9 +39,10 @@ object NewsByCategoryScreen {
             )
         }
 
+        // ✅ Sử dụng Action.BACK - Android Auto sẽ tự động pop screen
         return ListTemplate.Builder()
             .setTitle("$category (${newsList.size})")
-            .setHeaderAction(Action.BACK)
+            .setHeaderAction(Action.BACK)  // ✅ Standard action, không cần custom listener
             .setSingleList(itemListBuilder.build())
             .build()
     }

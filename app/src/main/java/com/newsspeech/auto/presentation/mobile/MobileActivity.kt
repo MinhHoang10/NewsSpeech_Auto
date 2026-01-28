@@ -149,10 +149,12 @@ private fun NavigationContainer() {
                 onSourceClick = { source ->
                     selectedFilter = NewsFilter.BySource(source)
                     currentScreen = Screen.NewsList
+
                 },
                 onTopicClick = { topic ->
                     selectedFilter = NewsFilter.ByTopic(topic)
                     currentScreen = Screen.NewsList
+
                 },
                 onSettingsClick = {
                     currentScreen = Screen.Settings

@@ -3,7 +3,9 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="com.newsspeech.auto">
 
+    <!-- ✅ Permissions cho crawler -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:name=".NewsApp"
@@ -15,6 +17,8 @@
         android:hardwareAccelerated="true"
         android:largeHeap="true"
         tools:ignore="UnusedAttribute">
+
+        <!-- Android Auto metadata -->
         <meta-data
             android:name="androidx.car.app.minCarApiLevel"
             android:value="1" />
@@ -22,6 +26,8 @@
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
+
+        <!-- Android Auto Service -->
         <service
             android:name=".service.AutoSpeechService"
             android:exported="true"
@@ -34,6 +40,7 @@
             </intent-filter>
         </service>
 
+        <!-- Main Activity -->
         <activity
             android:name=".presentation.mobile.MobileActivity"
             android:exported="true"
@@ -45,7 +52,7 @@
             </intent-filter>
         </activity>
 
-        <!-- ✅ Tắt strict mode để tránh ANR warnings trong development -->
+        <!-- ✅ Tắt strict mode để tránh ANR warnings -->
         <meta-data
             android:name="android.strictmode.enable"
             android:value="false" />

@@ -16,13 +16,13 @@ object CategoryListScreen {
     /**
      * Build template hien thi cac categories
      *
-     * @param newsMap Map<Category, List<News>>
+     * @param newsMap Map<Category, NewsCount> -  Đổi từ List<Int> thành Int
      * @param ttsState TTS state
      * @param onCategoryClick Callback khi chon category
      * @param onTestTts Test TTS
      */
     fun build(
-        newsMap: Map<String, List<Int>>,
+        newsMap: Map<String, Int>,  //  Đổi từ List<Int> thành Int
         ttsState: TtsState,
         onCategoryClick: (String) -> Unit,
         onTestTts: () -> Unit
@@ -37,14 +37,14 @@ object CategoryListScreen {
             itemListBuilder.addItem(TtsControlBar.buildTestRow(onTestTts))
         }
 
-        // Categories
+        // Categories - ✅ Giờ newsCount đã là Int, không cần .size
         newsMap.entries
-            .sortedByDescending { it.value.size } // Sort by so luong tin
-            .forEach { (category, newsList) ->
+            .sortedByDescending { it.value } //  Sort trực tiếp theo Int
+            .forEach { (category, newsCount) ->
                 itemListBuilder.addItem(
                     CategoryItem.build(
                         category = category,
-                        newsCount = newsList.size,
+                        newsCount = newsCount,  //  Trực tiếp dùng Int
                         onClick = { onCategoryClick(category) }
                     )
                 )
