@@ -47,7 +47,7 @@ fun NewsListScreen(
     val queueSize by NewsPlayer.queueSize.collectAsState()
     val isSpeaking by NewsPlayer.currentlySpeaking.collectAsState()
 
-    // 🔥 REALTIME: Lắng nghe database updates
+    // REALTIME: Lắng nghe database updates
     LaunchedEffect(Unit) {
         try {
             newsRepo.getNewsFlow().collect { newsList ->
@@ -134,6 +134,7 @@ fun NewsListScreen(
                 val content = buildNewsContent(news)
                 Log.d("NewsListScreen", "🔊 Adding to TTS queue: $title")
                 NewsPlayer.addToQueue(title, content)
+
             }
         } else {
             Log.w("NewsListScreen", "⚠️ TTS not ready yet")
@@ -144,6 +145,12 @@ fun NewsListScreen(
     val onStopTts: () -> Unit = {
         scope.launch(Dispatchers.Default) {
             NewsPlayer.stop()
+        }
+    }
+
+    val skipNextTts: () -> Unit = {
+        scope.launch(Dispatchers.Default) {
+            NewsPlayer.skipNext()
         }
     }
 
@@ -160,8 +167,12 @@ fun NewsListScreen(
                 title = {
                     Column {
                         Text(screenTitle)
+
                         if (filteredNewsList.isNotEmpty()) {
+
                             Text(
+//                                text = " Chao mung den voi tin tuc tu VnExpress",
+//                                style = MaterialTheme.typography.bodyMedium,
                                 "${filteredNewsList.size} tin",
                                 style = MaterialTheme.typography.bodySmall
                             )
@@ -199,7 +210,8 @@ fun NewsListScreen(
                 isTtsReady = isTtsReady,
                 isSpeaking = isSpeaking,
                 queueSize = queueSize,
-                onStop = onStopTts
+                onStop = onStopTts,
+                skipNext = skipNextTts
             )
         }
     ) { paddingValues ->

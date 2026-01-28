@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.car.app.CarContext
 import androidx.car.app.CarToast
 import androidx.car.app.Screen
+import androidx.car.app.ScreenManager
 import androidx.car.app.model.Template
 import androidx.lifecycle.lifecycleScope
 import com.newsspeech.auto.domain.model.News
@@ -11,14 +12,10 @@ import com.newsspeech.auto.presentation.car.components.EmptyView
 import com.newsspeech.auto.presentation.car.components.ErrorView
 import com.newsspeech.auto.presentation.car.components.LoadingView
 import com.newsspeech.auto.presentation.car.screens.CategoryListScreen
-import com.newsspeech.auto.presentation.car.screens.NewsByCategoryScreen
-import com.newsspeech.auto.presentation.car.screens.NewsDetailScreen
 import kotlinx.coroutines.launch
 
 /**
- * Main screen cho Android Auto voi navigation
- *
- * Flow: Categories -> News by Category -> News Detail (Player)
+ * Main screen - Category List
  */
 class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
 
@@ -26,11 +23,6 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
 
     // ViewModel
     private val viewModel = CarNewsViewModel(carContext)
-
-    // Navigation state
-    private var currentDestination: ScreenDestination = ScreenDestination.CategoryList
-    private var currentCategoryNews: List<News> = emptyList()
-    private var currentNewsIndex: Int = 0
 
     // Cached states
     private var lastUiState: CarUiState? = null
@@ -41,9 +33,6 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
         observeStates()
     }
 
-    /**
-     * Observe states tu ViewModel
-     */
     private fun observeStates() {
         lifecycleScope.launch {
             viewModel.uiState.collect { state ->
@@ -64,148 +53,161 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
         }
     }
 
-    /**
-     * Build template based on navigation state
-     */
     override fun onGetTemplate(): Template {
         val uiState = lastUiState ?: CarUiState.Loading
         val ttsState = lastTtsState ?: TtsState()
 
-        Log.d(TAG, "Building template - Destination: $currentDestination")
+        Log.d(TAG, "Building CategoryList template")
 
-        // Handle loading/error/empty states
-        when (uiState) {
-            is CarUiState.Loading -> return LoadingView.build()
-            is CarUiState.Empty -> return EmptyView.build()
-            is CarUiState.Error -> return ErrorView.build(
+        return when (uiState) {
+            is CarUiState.Loading -> LoadingView.build()
+            is CarUiState.Empty -> EmptyView.build()
+            is CarUiState.Error -> ErrorView.build(
                 errorMessage = uiState.message,
                 onRetry = { viewModel.refresh() }
             )
             is CarUiState.Success -> {
-                // Navigate based on current destination
-                return when (val dest = currentDestination) {
-                    is ScreenDestination.CategoryList -> {
-                        buildCategoryListScreen(uiState, ttsState)
-                    }
-                    is ScreenDestination.NewsByCategory -> {
-                        buildNewsByCategoryScreen(dest.category, uiState, ttsState)
-                    }
-                    is ScreenDestination.NewsDetail -> {
-                        buildNewsDetailScreen(dest.news, ttsState)
-                    }
+                CategoryListScreen.build(
+                    newsMap = uiState.newsMap.mapValues { it.value.size },
+                    ttsState = ttsState,
+                    onCategoryClick = { category ->
+                        navigateToCategory(category, uiState.newsMap[category] ?: emptyList())
+                    },
+                    onTestTts = { handleTestTts() }
+                )
+            }
+        }
+    }
+
+    private fun navigateToCategory(category: String, newsList: List<News>) {
+        Log.d(TAG, "Navigate to category: $category")
+        val categoryScreen = NewsByCategoryScreen(carContext, category, newsList, viewModel)
+        screenManager.push(categoryScreen)
+    }
+
+    private fun handleTestTts() {
+        Log.d(TAG, "Test TTS")
+        viewModel.testTts()
+        showToast("Test TTS")
+    }
+
+    private fun showToast(message: String) {
+        CarToast.makeText(carContext, message, CarToast.LENGTH_SHORT).show()
+    }
+}
+
+/**
+ * Screen hiển thị danh sách tin theo category
+ */
+class NewsByCategoryScreen(
+    carContext: CarContext,
+    private val category: String,
+    private val newsList: List<News>,
+    private val viewModel: CarNewsViewModel
+) : Screen(carContext) {
+
+    private val TAG = "NewsByCategoryScreen"
+
+    private var lastTtsState: TtsState? = null
+
+    init {
+        Log.d(TAG, "NewsByCategoryScreen initialized for: $category")
+        observeTtsState()
+    }
+
+    private fun observeTtsState() {
+        lifecycleScope.launch {
+            viewModel.ttsState.collect { state ->
+                if (state != lastTtsState) {
+                    lastTtsState = state
+                    invalidate()
                 }
             }
         }
     }
 
-    /**
-     * Build category list screen
-     */
-    private fun buildCategoryListScreen(
-        uiState: CarUiState.Success,
-        ttsState: TtsState
-    ): Template {
-        return CategoryListScreen.build(
-            newsMap = uiState.newsMap.mapValues { it.value.map { 0 } }, // Just count
-            ttsState = ttsState,
-            onCategoryClick = { category ->
-                navigateToCategory(category, uiState.newsMap[category] ?: emptyList())
-            },
-            onTestTts = { handleTestTts() }
-        )
-    }
+    override fun onGetTemplate(): Template {
+        val ttsState = lastTtsState ?: TtsState()
 
-    /**
-     * Build news by category screen
-     */
-    private fun buildNewsByCategoryScreen(
-        category: String,
-        uiState: CarUiState.Success,
-        ttsState: TtsState
-    ): Template {
-        return NewsByCategoryScreen.build(
+        return com.newsspeech.auto.presentation.car.screens.NewsByCategoryScreen.build(
             category = category,
-            newsList = currentCategoryNews,
+            newsList = newsList,
             ttsState = ttsState,
             onNewsClick = { news ->
                 navigateToNewsDetail(news)
-            },
-            onBack = { handleBack() }
+            }
         )
     }
 
-    /**
-     * Build news detail screen
-     */
-    private fun buildNewsDetailScreen(
-        news: News,
-        ttsState: TtsState
-    ): Template {
-        return NewsDetailScreen.build(
+    private fun navigateToNewsDetail(news: News) {
+        Log.d(TAG, "Navigate to news detail: ${news.title}")
+        val newsIndex = newsList.indexOf(news)
+        val detailScreen = NewsDetailScreen(carContext, news, newsList, newsIndex, viewModel)
+        screenManager.push(detailScreen)
+    }
+}
+
+/**
+ * Screen hiển thị chi tiết tin
+ */
+class NewsDetailScreen(
+    carContext: CarContext,
+    private val news: News,
+    private val allNews: List<News>,
+    private var currentIndex: Int,
+    private val viewModel: CarNewsViewModel
+) : Screen(carContext) {
+
+    private val TAG = "NewsDetailScreen"
+
+    private var lastTtsState: TtsState? = null
+
+    init {
+        Log.d(TAG, "NewsDetailScreen initialized for: ${news.title}")
+        observeTtsState()
+        observeLifecycle()
+
+        // Auto play when enter detail
+        if (viewModel.ttsState.value.isReady) {
+            viewModel.playNews(news)
+        }
+    }
+
+    private fun observeTtsState() {
+        lifecycleScope.launch {
+            viewModel.ttsState.collect { state ->
+                if (state != lastTtsState) {
+                    lastTtsState = state
+                    invalidate()
+                }
+            }
+        }
+    }
+
+    private fun observeLifecycle() {
+        lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
+            override fun onDestroy(owner: androidx.lifecycle.LifecycleOwner) {
+                super.onDestroy(owner)
+                viewModel.stopTts()
+                Log.d(TAG, "NewsDetailScreen destroyed, TTS stopped")
+            }
+        })
+    }
+
+    override fun onGetTemplate(): Template {
+        val ttsState = lastTtsState ?: TtsState()
+
+        return com.newsspeech.auto.presentation.car.screens.NewsDetailScreen.build(
             context = carContext,
             news = news,
             ttsState = ttsState,
-            currentIndex = currentNewsIndex + 1,
-            totalNews = currentCategoryNews.size,
+            currentIndex = currentIndex + 1,
+            totalNews = allNews.size,
             onPlayPause = { handlePlayPause(news) },
             onPrevious = { handlePrevious() },
             onNext = { handleNext() },
             onStop = { handleStop() }
         )
-    }
-
-    // ========================================
-    // NAVIGATION
-    // ========================================
-
-    // ========================================
-    // NAVIGATION
-    // ========================================
-
-    private fun navigateToCategory(category: String, newsList: List<News>) {
-        Log.d(TAG, "Navigate to category: $category")
-        currentDestination = ScreenDestination.NewsByCategory(category)
-        currentCategoryNews = newsList
-        invalidate()
-    }
-
-    private fun navigateToNewsDetail(news: News) {
-        Log.d(TAG, "Navigate to news detail: ${news.title}")
-        currentNewsIndex = currentCategoryNews.indexOf(news)
-        currentDestination = ScreenDestination.NewsDetail(news)
-
-        // Auto play when enter detail
-        if (lastTtsState?.isReady == true) {
-            viewModel.playNews(news)
-        }
-
-        invalidate()
-    }
-
-    // Back navigation is handled automatically by Action.BACK
-    // Android Auto ScreenManager will pop the screen from stack when back is pressed
-
-    // ========================================
-    // PLAYER CONTROLS
-    // ========================================
-
-    private fun handleBack() {
-        Log.d(TAG, "Back button pressed from: $currentDestination")
-        when (currentDestination) {
-            is ScreenDestination.NewsDetail -> {
-                val category = (currentDestination as ScreenDestination.NewsDetail).news.category
-                currentDestination = ScreenDestination.NewsByCategory(category)
-                invalidate()
-            }
-            is ScreenDestination.NewsByCategory -> {
-                currentDestination = ScreenDestination.CategoryList
-                invalidate()
-            }
-            else -> {
-                // Already at root
-                Log.d(TAG, "Already at CategoryList, cannot go back")
-            }
-        }
     }
 
     private fun handlePlayPause(news: News) {
@@ -221,10 +223,11 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
 
     private fun handlePrevious() {
         Log.d(TAG, "Previous")
-        if (currentNewsIndex > 0) {
-            currentNewsIndex--
-            val prevNews = currentCategoryNews[currentNewsIndex]
-            currentDestination = ScreenDestination.NewsDetail(prevNews)
+        if (currentIndex > 0) {
+            currentIndex--
+            val prevNews = allNews[currentIndex]
+
+            // Update this screen instead of navigating
             viewModel.playNews(prevNews)
             invalidate()
         }
@@ -232,10 +235,11 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
 
     private fun handleNext() {
         Log.d(TAG, "Next")
-        if (currentNewsIndex < currentCategoryNews.size - 1) {
-            currentNewsIndex++
-            val nextNews = currentCategoryNews[currentNewsIndex]
-            currentDestination = ScreenDestination.NewsDetail(nextNews)
+        if (currentIndex < allNews.size - 1) {
+            currentIndex++
+            val nextNews = allNews[currentIndex]
+
+            // Update this screen instead of navigating
             viewModel.playNews(nextNews)
             invalidate()
         }
@@ -247,15 +251,6 @@ class CarHomeScreen(carContext: CarContext) : Screen(carContext) {
         showToast("Da dung phat")
     }
 
-    private fun handleTestTts() {
-        Log.d(TAG, "Test TTS")
-        viewModel.testTts()
-        showToast("Test TTS")
-    }
-
-    /**
-     * Show toast helper
-     */
     private fun showToast(message: String) {
         CarToast.makeText(carContext, message, CarToast.LENGTH_SHORT).show()
     }

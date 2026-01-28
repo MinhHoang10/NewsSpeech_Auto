@@ -244,6 +244,7 @@ object NewsPlayer : TextToSpeech.OnInitListener {
                 Log.d(TAG, "⏹️ TTS stopped: $utteranceId, interrupted: $interrupted")
                 abandonAudioFocus()
             }
+
         })
     }
 
@@ -609,7 +610,8 @@ object NewsPlayer : TextToSpeech.OnInitListener {
         }
     }
 
-    private fun speakNext() {
+//    private fun speakNext() {
+    fun speakNext(){
         val nextText = queue.poll()
 
         if (nextText != null) {
@@ -649,6 +651,22 @@ object NewsPlayer : TextToSpeech.OnInitListener {
             _queueSize.value = 0
             abandonAudioFocus()
         }
+    }
+
+    /**
+     * Bỏ qua tin đang đọc hiện tại để sang tin tiếp theo
+     */
+    fun skipNext() {
+        Log.i(TAG, " bỏ qua tin hiện tại")
+
+        tts?.stop()
+
+        // Reset trạng thái
+        isSpeaking.set(false)
+        _currentlySpeaking.value = false
+
+        // Gọi tin tiếp theo trong hàng đợi
+        speakNext()
     }
 
     fun stop() {
